@@ -53,6 +53,17 @@ namespace MineHunter
             if (string.IsNullOrEmpty(coded)) return "";
             int i = coded.IndexOf('|'); string code = i > 0 ? coded.Substring(0, i) : ""; string en = i > 0 ? coded.Substring(i + 1) : coded;
             if (!Ru) return en;
+            if (code == "FW_OFF")
+            {
+                // the English text names the profile ("... for the public network profile."); keep that detail in Russian
+                var m = System.Text.RegularExpressions.Regex.Match(en, @"for the (\w+) network profile");
+                if (m.Success)
+                {
+                    string p = m.Groups[1].Value;
+                    string ruProfile = p == "domain" ? "доменной" : p == "public" ? "общедоступной" : p == "standard" ? "частной" : null;
+                    if (ruProfile != null) return "Брандмауэр Windows выключен для " + ruProfile + " сети.";
+                }
+            }
             string ru;
             return PostureRu.TryGetValue(code, out ru) ? ru : en;
         }
@@ -110,7 +121,7 @@ namespace MineHunter
             { "scan.idle", new[] { "Ready. Press a scan button.", "Готово. Нажмите кнопку проверки." } },
             { "scan.running", new[] { "Scanning…", "Идёт проверка…" } },
             { "scan.done", new[] { "Scan finished", "Проверка завершена" } },
-            { "scan.clean", new[] { "Nothing dangerous was found.", "Ничего опасного не найдено." } },
+            { "scan.clean", new[] { "Nothing suspicious was found.", "Ничего подозрительного не найдено." } },
             { "upd.checking", new[] { "Checking for updates…", "Проверка обновлений…" } },
             { "upd.uptodate", new[] { "You have the latest version", "У вас последняя версия" } },
             { "upd.available", new[] { "New version available", "Доступна новая версия" } },
@@ -119,11 +130,11 @@ namespace MineHunter
             { "upd.disabled", new[] { "Update check is off", "Проверка обновлений отключена" } },
             { "upd.rules", new[] { "Newer detection rules are available", "Доступны более новые правила детекта" } },
             { "upd.install_rules", new[] { "Install new rules", "Установить новые правила" } },
-            { "privacy.text", new[] { "MineHunter works completely locally. It does not upload files, hashes, logs or anything else, has no account and no telemetry. The only network request is an optional download of the public version.json to see whether a newer version or rule pack exists; nothing from your computer is sent.", "MineHunter работает полностью локально. Он не отправляет файлы, хеши, логи и вообще ничего, не требует аккаунта и не собирает телеметрию. Единственный сетевой запрос — необязательная загрузка публичного version.json, чтобы узнать о новой версии или правилах; с вашего компьютера при этом ничего не отправляется." } },
+            { "privacy.text", new[] { "MineHunter works completely locally. It does not upload files, hashes, logs or anything else, has no account and no telemetry. The only network request is an optional download of the public version.json and, when a newer one is published, the rule pack. Nothing from your computer is sent.", "MineHunter работает полностью локально. Он не отправляет файлы, хеши, логи и вообще ничего, не требует аккаунта и не собирает телеметрию. Единственный сетевой запрос — необязательная загрузка публичного version.json и, если опубликован более новый, пакета правил. С вашего компьютера ничего не отправляется." } },
             { "report.title", new[] { "scan report", "отчёт о проверке" } },
             { "report.generated", new[] { "Generated", "Создан" } }, { "report.os", new[] { "System", "Система" } }, { "report.protection", new[] { "Protection", "Защита" } },
             { "report.scan", new[] { "Scan", "Проверка" } }, { "report.scanned", new[] { "Examined", "Проверено" } }, { "report.summary", new[] { "Summary", "Итог" } }, { "report.notes", new[] { "notes", "заметок" } },
-            { "report.nothing", new[] { "Nothing dangerous was found.", "Ничего опасного не найдено." } },
+            { "report.nothing", new[] { "Nothing suspicious was found.", "Ничего подозрительного не найдено." } },
             { "report.why", new[] { "Why", "Почему" } }, { "report.capped", new[] { "Why not higher", "Почему не выше" } }, { "report.chain", new[] { "Chain", "Цепочка" } },
             { "report.hashes", new[] { "SHA-256", "SHA-256" } }, { "report.action", new[] { "Recommended", "Рекомендуется" } }, { "report.result", new[] { "Result", "Результат" } },
             { "report.reboot", new[] { "RESTART REQUIRED to finish the cleanup", "ТРЕБУЕТСЯ ПЕРЕЗАГРУЗКА для завершения очистки" } },

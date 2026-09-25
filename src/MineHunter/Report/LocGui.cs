@@ -59,7 +59,7 @@ namespace MineHunter
             Tuple.Create(new Regex(@"^Remove extension ""(.+)"" \(files moved to quarantine; close the browser first\)$"), "Удалить расширение «{0}» (файлы уходят в карантин; сначала закройте браузер)"),
             Tuple.Create(new Regex(@"^Review manually: (.+)$"), "Проверьте вручную: {0}"),
             Tuple.Create(new Regex(@"^Stop process (.+?) \(PID (\d+)\)$"), "Остановить процесс {0} (PID {1})"),
-            Tuple.Create(new Regex(@"^Quarantine file (.+?) \(encrypted copy kept, restorable\)$"), "Поместить файл {0} в карантин (копия хранится в зашифрованном виде — можно восстановить)"),
+            Tuple.Create(new Regex(@"^Quarantine file (.+?) \(a copy is kept, restorable\)$"), "Поместить файл {0} в карантин (копия сохраняется, файл можно восстановить)"),
         };
 
         public static string Step(RemediationStep s)
@@ -113,8 +113,8 @@ namespace MineHunter
             if (!Ru) return f.Recommendation;
             string r = f.Recommendation ?? "";
             if (r.StartsWith("Review only")) return "Только для просмотра — автоматически здесь ничего отменить нельзя.";
-            if (r.StartsWith("Review.")) return "Проверьте. Если вы это не узнаёте — отметьте нужные действия и нажмите «Обезвредить»; всё можно вернуть из карантина.";
-            if (r.StartsWith("Neutralize")) return "Обезвредить: остановить процессы, убрать записи автозапуска и поместить файлы в карантин (всё обратимо).";
+            if (r.StartsWith("Review.")) return "Проверьте. Если не узнаёте эту программу, отметьте нужные действия и нажмите «Обезвредить». Удалённые файлы и настройки можно вернуть из карантина.";
+            if (r.StartsWith("Neutralize")) return "Обезвредить: остановить процессы, убрать записи автозапуска и поместить файлы в карантин. Удалённые файлы и настройки можно вернуть из карантина.";
             return r;
         }
 
@@ -165,7 +165,7 @@ namespace MineHunter
             {
                 case Model.Verdict.Malware: return L("Several independent kinds of evidence agree. This is very likely malicious.", "Сошлись несколько независимых видов улик. Это почти наверняка вредоносное.");
                 case Model.Verdict.HighRisk: return L("Strong, corroborated signs of a hidden miner or malware. Neutralizing is recommended.", "Сильные, подтверждающие друг друга признаки скрытого майнера или вредоносной программы. Рекомендуется обезвредить.");
-                case Model.Verdict.Suspicious: return L("Something unusual, but not enough to be sure. Look at the evidence; if you do not recognise the program, neutralize it (everything is restorable).", "Что-то необычное, но не настолько, чтобы быть уверенным. Посмотрите улики; если программу не узнаёте — обезвредьте (всё можно вернуть).");
+                case Model.Verdict.Suspicious: return L("Something unusual, but not enough to be sure. Look at the evidence; if you do not recognise the program, neutralize it. Removed files and settings can be restored from Quarantine.", "Что-то необычное, но не настолько, чтобы быть уверенным. Посмотрите улики; если программу не узнаёте, обезвредьте её. Удалённые файлы и настройки можно вернуть из карантина.");
                 default: return L("Minor note, not a threat. Shown only for completeness.", "Мелкая заметка, не угроза. Показана для полноты картины.");
             }
         }

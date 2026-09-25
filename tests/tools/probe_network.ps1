@@ -1,5 +1,5 @@
 <#
-  probe_network.ps1 - runs a MineHunter scan and samples, once per second, every TCP connection and UDP endpoint owned by the MineHunter process.
+  probe_network.ps1 - runs a MineHunter scan and samples, about every 0.7 s, every TCP connection and UDP endpoint owned by the MineHunter process.
   Purpose: evidence for the privacy claim (with no update source configured, a scan opens no network connection at all).
 #>
 param([string]$ArgString = 'scan --quick --no-cache --quiet', [string]$Exe)

@@ -5,7 +5,7 @@
 param(
     [Parameter(Mandatory)][string]$Before,
     [Parameter(Mandatory)][string]$After,
-    [string[]]$IgnoreDirPatterns = @('\\Temp\\claude\\','\\Temp\\MineHunterWork\\','\\Claude\\','\\.claude','\\Cache','\\GPUCache','\\Code Cache','\\Crashpad','\\node_modules\\','\\Local Storage','\\Session Storage','\\IndexedDB','\\Service Worker'),
+    [string[]]$IgnoreDirPatterns = @('\\Temp\\MineHunterWork\\','\\Cache','\\GPUCache','\\Code Cache','\\Crashpad','\\node_modules\\','\\Local Storage','\\Session Storage','\\IndexedDB','\\Service Worker'),
     [switch]$ShowProcesses
 )
 $a = Get-Content $Before -Raw | ConvertFrom-Json

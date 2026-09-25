@@ -30,7 +30,7 @@ namespace MineHunter.Scanning
         {
             var res = new ScanResult { Started = DateTime.Now, Mode = opt.Mode.ToString(), AppVersion = AppInfo.Version };
             var sw = Stopwatch.StartNew();
-            // a scanner must never make the PC feel slow: run below normal priority for the duration of the scan (MinerSearch runs at RealTime)
+            // run below normal priority during the scan so the PC stays responsive
             ProcessPriorityClass? oldPriority = null;
             try { var me = Process.GetCurrentProcess(); oldPriority = me.PriorityClass; if (oldPriority == ProcessPriorityClass.Normal) me.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
             try { return RunCore(opt, ct, progress, res, sw); }

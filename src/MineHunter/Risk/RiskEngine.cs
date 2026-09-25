@@ -444,12 +444,12 @@ namespace MineHunter.Risk
             {
                 int pos = e.Evidence.Where(v => v.Weight > 0).Sum(v => v.Weight);
                 if (pos < ObservationOrMore) continue;
-                add(new RemediationStep { Type = ActionType.QuarantineFile, EntityId = e.Id, Target = e.Location, Order = 3, RecommendedByDefault = defaultOn, Description = "Quarantine file " + e.Location + " (encrypted copy kept, restorable)" });
+                add(new RemediationStep { Type = ActionType.QuarantineFile, EntityId = e.Id, Target = e.Location, Order = 3, RecommendedByDefault = defaultOn, Description = "Quarantine file " + e.Location + " (a copy is kept, restorable)" });
             }
             f.Steps = steps.OrderBy(s => s.Order).ToList();
             if (!f.Steps.Any(s => s.Type != ActionType.ReviewOnly)) f.Recommendation = "Review only - nothing here can be undone automatically.";
-            else if (f.Verdict == Verdict.Suspicious) f.Recommendation = "Review. If you do not recognise it, tick the actions and press Neutralize; everything can be restored from Quarantine.";
-            else f.Recommendation = "Neutralize: stop the processes, remove the autostart entries, then quarantine the files (all reversible).";
+            else if (f.Verdict == Verdict.Suspicious) f.Recommendation = "Review. If you do not recognise it, tick the actions and press Neutralize. Removed files and settings can be restored from Quarantine.";
+            else f.Recommendation = "Neutralize: stop the processes, remove the autostart entries, then quarantine the files. Removed files and settings can be restored from Quarantine.";
         }
         const int ObservationOrMore = 8;
     }

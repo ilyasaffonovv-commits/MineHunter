@@ -471,12 +471,11 @@ namespace MineHunter.Scanning
                     string name = Path.GetFileName(f);
                     if (name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
                     ctx.Stats.PersistenceItems++;
-                    string command = f; string extraNote = null;
+                    string command = f;
                     if (f.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
                     {
                         string target, args;
                         if (ResolveShortcut(f, out target, out args)) command = (target ?? "") + (string.IsNullOrEmpty(args) ? "" : " " + args);
-                        else extraNote = "shortcut could not be read";
                     }
                     var e = Persist.Evaluate(ctx, "startup:" + PathUtil.Key(f), EntityKind.StartupItem, name, f, command, "Startup-folder item", ev =>
                     {

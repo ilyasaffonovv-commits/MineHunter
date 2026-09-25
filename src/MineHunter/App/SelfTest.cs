@@ -91,7 +91,7 @@ namespace MineHunter
                 Check("Authenticode/catalog verification: notepad.exe is Microsoft-signed", ti.IsValid && FileIntelClassify(ti, rules) == TrustClass.MicrosoftSigned, ti.ToString());
             }
             string self = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
-            Check("verification: this build is reported as unsigned (honest)", Trust.Check(self).State == TrustState.Unsigned || Trust.Check(self).IsValid == false);
+            Check("verification: this build is reported as unsigned", Trust.Check(self).State == TrustState.Unsigned || Trust.Check(self).IsValid == false);
 
             w.WriteLine("\nRule-pack semantics (what a rule update can do)");
             try

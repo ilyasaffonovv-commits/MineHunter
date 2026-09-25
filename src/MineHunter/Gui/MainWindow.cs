@@ -390,7 +390,7 @@ namespace MineHunter.Gui
         void SetHeroIdle()
         {
             SetBusy(Mode.Idle); Chips.Visibility = Visibility.Collapsed; BtnNeutralizeAll.Visibility = Visibility.Collapsed;
-            SetHero("🛡", Res("Accent"), L("Ready to scan", "Готов к проверке"), _cfg.AutoScanOnStart ? L("The quick scan starts by itself in a moment.", "Быстрая проверка запустится сама через мгновение.") : Loc.T("scan.idle"));
+            SetHero("▶", Res("Accent"), L("Ready to scan", "Готов к проверке"), _cfg.AutoScanOnStart ? L("The quick scan starts by itself in a moment.", "Быстрая проверка запустится сама через мгновение.") : Loc.T("scan.idle"));
             HeroGlyph.FontSize = 30;
             HeroSub.Text = Loc.T("scan.idle");
         }
@@ -413,7 +413,7 @@ namespace MineHunter.Gui
             else if (mal > 0) SetHero("✕", Res("Bad"), L("Malware found", "Найдено вредоносное ПО"), stats);
             else if (high > 0) SetHero("!", Res("Orange"), L("Threats found", "Найдены угрозы"), stats);
             else if (susp > 0) SetHero("?", Res("Warn"), L("Something looks suspicious", "Есть подозрительное"), stats);
-            else SetHero("✓", Res("Good"), L("All clean", "Всё чисто"), Loc.T("scan.clean") + "  " + stats);
+            else SetHero("✓", Res("Good"), L("No threats found", "Угроз не найдено"), Loc.T("scan.clean") + "  " + stats);
             if (mal > 0) Chips.Children.Add(Chip(Loc.T("sum.malware") + "  " + mal, Res("Bad")));
             if (high > 0) Chips.Children.Add(Chip(Loc.T("sum.high") + "  " + high, Res("Orange")));
             if (susp > 0) Chips.Children.Add(Chip(Loc.T("sum.susp") + "  " + susp, Res("Warn")));
@@ -489,7 +489,7 @@ namespace MineHunter.Gui
             if (items.Count == 0)
             {
                 EmptyText.Visibility = Visibility.Visible;
-                EmptyText.Text = _res == null ? L("No scan yet.", "Проверки ещё не было.") : L("Nothing dangerous was found.", "Ничего опасного не найдено.") + (_res.Observations.Count > 0 ? "\n\n" + L("There are " + _res.Observations.Count + " minor notes (not threats). Tick the box above to see them.", "Есть " + _res.Observations.Count + " мелких заметок (не угроз). Отметьте галочку выше, чтобы их увидеть.") : "");
+                EmptyText.Text = _res == null ? L("No scan yet.", "Проверки ещё не было.") : L("Nothing suspicious was found.", "Ничего подозрительного не найдено.") + (_res.Observations.Count > 0 ? "\n\n" + L("There are " + _res.Observations.Count + " minor notes (not threats). Tick the box above to see them.", "Есть " + _res.Observations.Count + " мелких заметок (не угроз). Отметьте галочку выше, чтобы их увидеть.") : "");
                 ShowEmptyDetails();
             }
             else { EmptyText.Visibility = Visibility.Collapsed; ResultList.SelectedIndex = 0; }
@@ -564,7 +564,7 @@ namespace MineHunter.Gui
             // why
             P.Children.Add(Head(Loc.T("det.why")));
             foreach (var ev in f.TopEvidence) P.Children.Add(EvidenceRow(ev));
-            P.Children.Add(Tb(L("The score is not a plain sum: each kind of evidence is capped and repeated signals count less, so one loud signal can never condemn a program alone.", "Балл — не простая сумма: каждый вид улик ограничен, а повторяющиеся сигналы весят меньше, поэтому один громкий признак никогда не осудит программу в одиночку."), 11, Res("Muted"), null, new Thickness(0, 6, 0, 0)));
+            P.Children.Add(Tb(L("Each kind of evidence is capped and repeated signals count less, so a single signal cannot raise a program to High Risk.", "Каждый вид улик ограничен, повторяющиеся сигналы весят меньше, поэтому один признак не поднимает программу до высокого риска."), 11, Res("Muted"), null, new Thickness(0, 6, 0, 0)));
             if (!string.IsNullOrEmpty(f.WhyNotHigher)) P.Children.Add(Tb(Loc.T("det.capped") + ": " + Loc.WhyNotHigher(f.WhyNotHigher), 12, Res("Warn"), null, new Thickness(0, 8, 0, 0)));
 
             // chain
@@ -583,7 +583,7 @@ namespace MineHunter.Gui
             }
 
             var btns = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
-            if (_stepItems.Any(s => s.Enabled)) btns.Children.Add(Btn("🛡  " + Loc.T("btn.neutralize"), "BtnDanger", (s, e) => NeutralizeSelected(f)));
+            if (_stepItems.Any(s => s.Enabled)) btns.Children.Add(Btn(Loc.T("btn.neutralize"), "BtnDanger", (s, e) => NeutralizeSelected(f)));
             btns.Children.Add(Btn(Loc.T("btn.allow"), "Btn", (s, e) => MarkSafe(f.Entities, Loc.Title(f.Title), f)));
             AddFolderButtons(btns, f.Entities);
             P.Children.Add(btns);
@@ -677,7 +677,7 @@ namespace MineHunter.Gui
         {
             if (_mode != Mode.Idle || _res == null) return;
             var sb = new StringBuilder();
-            sb.AppendLine(L("The following will be done. Everything is saved to Quarantine and can be restored.", "Будет выполнено следующее. Всё сохраняется в карантине и восстанавливается."));
+            sb.AppendLine(L("The following will be done. Removed files and settings are saved to Quarantine and can be restored; stopped processes are not restarted.", "Будет выполнено следующее. Удаляемые файлы и настройки сохраняются в карантине и могут быть восстановлены; остановленные процессы заново не запускаются."));
             sb.AppendLine();
             foreach (var kv in plan.Take(6)) { sb.AppendLine("■ " + Loc.Title(kv.Key.Title)); foreach (var s in kv.Value.Take(6)) sb.AppendLine("     – " + Loc.Step(s)); if (kv.Value.Count > 6) sb.AppendLine("     …"); }
             if (plan.Count > 6) sb.AppendLine("… +" + (plan.Count - 6));
@@ -686,7 +686,7 @@ namespace MineHunter.Gui
 
             var oldRes = _res; var ctx = ScanEngine.LastContext; var opt = _lastOpt ?? new ScanOptions();
             SetBusy(Mode.Cleaning); Prog.Value = 0;
-            SetHero("⚙", Res("Accent"), L("Neutralizing…", "Обезвреживание…"), L("Stopping processes, removing autostart entries and moving files to quarantine.", "Останавливаю процессы, убираю автозапуск и перемещаю файлы в карантин."));
+            SetHero("…", Res("Accent"), L("Neutralizing…", "Обезвреживание…"), L("Stopping processes, removing autostart entries and moving files to quarantine.", "Останавливаю процессы, убираю автозапуск и перемещаю файлы в карантин."));
             ProgText.Text = "";
             _cts = new CancellationTokenSource(); var ct = _cts.Token;
             Task.Run(() =>
@@ -698,7 +698,7 @@ namespace MineHunter.Gui
                     var oc = RemediationEngine.Execute(ctx, kv.Key, kv.Value, m => Log.Info("   " + m));
                     outcomes.Add(new FindingOutcome { FindingId = kv.Key.Id, Outcome = oc });
                 }
-                Ui(() => { SetHero("⟳", Res("Accent"), L("Checking that everything is really gone…", "Проверяю, что всё действительно удалено…"), L("A new quick scan confirms the result.", "Новая быстрая проверка подтверждает результат.")); ProgText.Text = ""; });
+                Ui(() => { SetHero("⟳", Res("Accent"), L("Checking the result…", "Проверяю результат…"), L("A new quick scan confirms the result.", "Новая быстрая проверка подтверждает результат.")); ProgText.Text = ""; });
                 var re = Verifier.Rescan(opt, oldRes.Findings, outcomes, ct, (s, p) => Ui(() => { Prog.Value = p; ProgText.Text = Loc.Progress(s); }));
                 string rep = null; try { rep = ReportWriter.Write(oldRes, outcomes, ReportWriter.DefaultDir); } catch { }
                 return Tuple.Create(outcomes, re, rep);
@@ -754,7 +754,7 @@ namespace MineHunter.Gui
                 return new QItem { It = it, Title = string.IsNullOrEmpty(it.Title) ? Path.GetFileName(it.OriginalPath ?? "") : it.Title, Sub = it.OriginalPath, Meta = when + "  ·  " + Loc.Title(it.FindingTitle ?? "") + (it.Size > 0 ? "  ·  " + (it.Size / 1024) + " KB" : ""), Kind = it.Type };
             }).ToList();
             QEmpty.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            QEmpty.Text = L("Quarantine is empty. Everything MineHunter removes is stored here (encrypted) and can be restored.", "Карантин пуст. Всё, что удалит MineHunter, хранится здесь (в зашифрованном виде) и может быть восстановлено.");
+            QEmpty.Text = L("Quarantine is empty. Whatever MineHunter removes is saved here and can be restored.", "Карантин пуст. То, что удалит MineHunter, сохраняется здесь и может быть восстановлено.");
             StQuarV.Text = list.Count + (list.Count > 0 ? "  " + L("item(s)", "элем.") : "");
         }
 
