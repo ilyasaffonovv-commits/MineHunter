@@ -1,0 +1,10 @@
+{
+  "updateManifestUrl": "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/version.json",
+  "checkUpdatesOnStart": true,
+  "autoScanOnStart": true,
+  "autoUpdateRules": true,
+  "scanBrowsers": true,
+  "scanMemory": true,
+  "language": "auto",
+  "gitHubRepo": "https://github.com/ilyasaffonovv-commits/MineHunter"
+}

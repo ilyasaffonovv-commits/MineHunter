@@ -1,0 +1,102 @@
+{
+  "pack": "core",
+  "version": "2026.09.25.1",
+  "description": "MineHunter core rule pack: generic miner / persistence / masquerade indicators. Data only - update without rebuilding the EXE.",
+
+  "minerStrings": {
+    "protocol": ["stratum+tcp://", "stratum+ssl://", "stratum+tls://", "stratum2+tcp://", "mining.subscribe", "mining.authorize", "mining.submit", "--donate-level", "donate-over-proxy", "--donate-over-proxy"],
+    "algorithm": ["cryptonight", "randomx", "rx/0", "cn/r", "cn/half", "cn-heavy", "argon2/chukwa", "ghostrider", "kawpow", "autolykos", "ethash", "etchash", "kheavyhash"],
+    "program": ["xmrig", "xmr-stak", "xmrstak", "cpuminer", "lolminer", "nbminer", "gminer", "srbminer", "t-rex", "teamredminer", "phoenixminer", "ethminer", "bminer", "wildrig", "nanominer", "rigel miner", "kryptex", "moneroocean"],
+    "pool": ["supportxmr", "minexmr", "nanopool.org", "2miners.com", "herominers", "hashvault.pro", "c3pool.org", "unmineable.com", "f2pool.com", "ethermine.org", "flexpool.io", "nicehash.com", "woolypooly", "hiveon.net", "poolin.com", "antpool.com", "k1pool.com"],
+    "tuning": ["--cpu-priority", "--max-cpu-usage", "--huge-pages", "msr mod", "hashrate", "randomx dataset", "winring0"]
+  },
+
+  "cmdlinePatterns": [
+    { "id": "CMD.MINER.STRATUM_URL", "regex": "stratum2?\\+(tcp|ssl|tls|udp)://", "weight": 40, "definitive": false, "category": "Content", "text": "Command line points to a mining pool (stratum URL)" },
+    { "id": "CMD.MINER.DONATE_LEVEL", "regex": "--donate-(level|over-proxy)", "weight": 40, "definitive": true, "category": "Content", "text": "XMRig-style --donate-level option in the command line" },
+    { "id": "CMD.MINER.ALGO_FLAG", "regex": "(^|\\s)(-a|--algo)[= ]+(rx/|cn/|cn-|randomx|kawpow|ethash|etchash|autolykos|ergo|kheavyhash|scrypt|x16r|x16rv2|cryptonight|argon2|ghostrider|verushash|equihash)", "weight": 30, "definitive": false, "category": "Content", "text": "Mining algorithm selected on the command line" },
+    { "id": "CMD.MINER.POOL_USER", "regex": "(^|\\s)(-o|--url)[= ]+\\S+:\\d{2,5}.*(^|\\s)(-u|--user)[= ]+\\S+", "weight": 35, "definitive": false, "category": "Content", "text": "Pool address plus user/wallet on the command line" },
+    { "id": "CMD.MINER.WALLET_XMR", "regex": "\\b4[0-9AB][1-9A-HJ-NP-Za-km-z]{93}\\b", "weight": 35, "definitive": false, "category": "Content", "text": "Monero wallet address in the command line" },
+    { "id": "CMD.MINER.POOL_NAME", "regex": "(supportxmr|minexmr|moneroocean|nanopool|2miners|herominers|hashvault|c3pool|f2pool|unmineable|ethermine|flexpool|nicehash|woolypooly|hiveon|kryptex|miningpoolhub|antpool|viabtc|poolin|zpool|prohashing|k1pool|ezil)\\.", "weight": 25, "definitive": false, "category": "Content", "text": "Command line references a known mining pool" },
+    { "id": "CMD.MINER.CPU_TUNING", "regex": "--(cpu-priority|max-cpu-usage|cpu-affinity|randomx-mode|huge-pages|threads=\\d+.*--coin|coin[= ](xmr|monero|etc|rvn|ergo))", "weight": 20, "definitive": false, "category": "Content", "text": "Miner tuning options in the command line" },
+    { "id": "CMD.PS.ENCODED", "regex": "powershell(\\.exe)?[^|&;]*\\s-(e|ec|enc|encodedcommand)\\s+[A-Za-z0-9+/=]{40,}", "weight": 25, "definitive": false, "category": "Persistence", "text": "Hidden PowerShell with an encoded command" },
+    { "id": "CMD.PS.DOWNLOAD_EXEC", "regex": "(iex|invoke-expression)[^|]*\\b(downloadstring|invoke-webrequest|iwr|irm|invoke-restmethod|webclient)\\b|\\b(downloadstring|downloadfile)\\b.*(iex|invoke-expression|start-process)", "weight": 30, "definitive": false, "category": "Persistence", "text": "PowerShell downloads and runs code" },
+    { "id": "CMD.DEFENDER.EXCLUSION", "regex": "(add|set)-mppreference[^|]*-exclusion(path|process|extension)", "weight": 35, "definitive": false, "category": "Tamper", "text": "Command adds Microsoft Defender exclusions" },
+    { "id": "CMD.DEFENDER.EXCLUSION_BROAD", "regex": "(add|set)-mppreference[^|]*-exclusionpath\\s+[@(]*['\"]?([a-z]:\\\\?|%(temp|tmp|appdata|localappdata|programdata|userprofile|public)%\\\\?|[a-z]:\\\\(users|programdata|windows|program files)(\\\\?|\\\\[^\\\\'\"]+\\\\?))['\"]?\\s*(\\)|,|;|$|\\s-)", "weight": 45, "definitive": false, "category": "Tamper", "text": "Command excludes an entire drive or system folder from Microsoft Defender" },
+    { "id": "CMD.DEFENDER.DISABLE", "regex": "(set-mppreference[^|]*-disable(realtimemonitoring|behaviormonitoring|ioavprotection|scriptscanning)|sc(\\.exe)?\\s+(stop|config)\\s+windefend|disableantispyware)", "weight": 35, "definitive": false, "category": "Tamper", "text": "Command disables Microsoft Defender" },
+    { "id": "CMD.LOLBIN.REMOTE", "regex": "(mshta(\\.exe)?\\s+https?://|regsvr32(\\.exe)?[^|]*/i:https?://|rundll32(\\.exe)?\\s+javascript:|certutil(\\.exe)?[^|]*-urlcache[^|]*http|bitsadmin(\\.exe)?[^|]*/transfer)", "weight": 35, "definitive": false, "category": "Persistence", "text": "Living-off-the-land binary fetches remote content" },
+    { "id": "CMD.CMD.CHAIN", "regex": "cmd(\\.exe)?\\s+/c\\s+.*(&&|&)\\s*(start|powershell|schtasks|reg\\s+add|attrib)", "weight": 12, "definitive": false, "category": "Persistence", "text": "cmd.exe chain that starts other tools" },
+    { "id": "CMD.SCHTASKS.MINUTE", "regex": "schtasks(\\.exe)?\\s+/create[^|]*/sc\\s+minute[^|]*/mo\\s+[1-5]\\b", "weight": 20, "definitive": false, "category": "Persistence", "text": "Task created to run every few minutes (respawn / watchdog pattern)" },
+    { "id": "CMD.POWERCFG.NEVER", "regex": "powercfg(\\.exe)?\\s+[^|]*(hibernate\\s+off|-h\\s+off|standby-timeout-(ac|dc)\\s+0)", "weight": 6, "definitive": false, "category": "Behavior", "text": "Sleep/hibernate disabled (common in miner installers)" },
+    { "id": "CMD.RDP.WRAPPER", "regex": "(rdpwinst|rdpwrap)", "weight": 25, "definitive": false, "category": "Persistence", "text": "RDP Wrapper installation (used by many miner/RAT bundles)" }
+  ],
+
+  "poolDomainRegex": [
+    "(^|\\.)(supportxmr|minexmr|moneroocean|nanopool|2miners|herominers|hashvault|c3pool|f2pool|unmineable|ethermine|flexpool|nicehash|woolypooly|hiveon|kryptex|miningpoolhub|antpool|viabtc|poolin|zpool|prohashing|k1pool|ezil|skypool|monerohash|xmrpool|sparkpool)\\.",
+    "(^|\\.)(xmr|monero|randomx|stratum|mining)[a-z0-9-]*\\.(pool|mine)[a-z0-9-]*\\.",
+    "^(xmr|eth|etc|rvn|erg|kas|btc)[.-]?pool\\."
+  ],
+
+  "miningPorts": [1111, 2020, 3333, 3357, 4028, 4040, 4444, 5555, 6666, 7777, 8888, 9999, 10128, 10343, 14433, 14444, 20009, 45560, 45700],
+
+  "minerFileNames": ["xmrig", "xmrig-cuda", "xmrig-notls", "xmr-stak", "xmrstak", "cpuminer", "cpuminer-opt", "nbminer", "lolminer", "gminer", "srbminer-multi", "srbminer", "t-rex", "trex", "teamredminer", "phoenixminer", "ethminer", "claymore", "bminer", "wildrig", "wildrig-multi", "nanominer", "rigel", "miniz", "kryptex", "minergate", "minergate-cli"],
+
+  "systemBinaries": ["svchost.exe", "csrss.exe", "lsass.exe", "services.exe", "winlogon.exe", "wininit.exe", "smss.exe", "explorer.exe", "taskhost.exe", "taskhostw.exe", "dwm.exe", "conhost.exe", "runtimebroker.exe", "sihost.exe", "spoolsv.exe", "audiodg.exe", "dllhost.exe", "ctfmon.exe", "fontdrvhost.exe", "wmiprvse.exe", "unsecapp.exe", "lsm.exe", "searchindexer.exe", "searchprotocolhost.exe", "wuauclt.exe", "msiexec.exe", "backgroundtaskhost.exe", "securityhealthservice.exe", "securityhealthsystray.exe", "smartscreen.exe", "werfault.exe", "wermgr.exe", "userinit.exe", "logonui.exe", "consent.exe", "compattelrunner.exe", "wlms.exe", "taskeng.exe", "mmc.exe"],
+
+  "brands": ["microsoft", "windows", "realtek", "nvidia", "intel", "amd", "google", "chrome", "adobe", "oracle", "steam", "discord", "onedrive", "defender", "runtime", "driver", "asus", "logitech", "razer", "opera", "yandex", "mozilla", "firefox", "edge", "java", "office", "teams", "zoom", "vmware", "kaspersky", "avast"],
+
+  "hollowTargets": ["installutil.exe", "regasm.exe", "regsvcs.exe", "msbuild.exe", "applaunch.exe", "addinprocess.exe", "addinprocess32.exe", "aspnet_compiler.exe", "jsc.exe", "vbc.exe", "csc.exe", "cvtres.exe", "ilasm.exe", "nslookup.exe", "calc.exe", "notepad.exe", "mspaint.exe", "dwm.exe", "svchost.exe", "explorer.exe", "conhost.exe", "dllhost.exe", "rundll32.exe", "regsvr32.exe", "wscript.exe", "cscript.exe", "mshta.exe"],
+  "neverExternalNetwork": ["installutil.exe", "regasm.exe", "regsvcs.exe", "aspnet_compiler.exe", "addinprocess.exe", "addinprocess32.exe", "applaunch.exe", "jsc.exe", "vbc.exe", "cvtres.exe", "ilasm.exe", "dwm.exe", "calc.exe", "mspaint.exe", "notepad.exe", "conhost.exe", "taskhostw.exe", "sihost.exe", "fontdrvhost.exe", "audiodg.exe", "ctfmon.exe"],
+
+  "trustedPublishers": ["Microsoft", "NVIDIA", "Advanced Micro Devices", "AMD", "Intel", "Valve", "Discord", "Epic Games", "Electronic Arts", "Ubisoft", "Riot Games", "Blizzard", "Activision", "Google", "Mozilla", "Adobe", "Oracle", "JetBrains", "VMware", "Docker", "Python Software Foundation", "OpenJS Foundation", "Node.js", "Opera", "Yandex", "Zoom Video", "Slack", "ASUS", "Logitech", "Realtek", "Razer", "Corsair", "SteelSeries", "Apple", "Dropbox", "Cloudflare", "GitHub", "Anthropic", "Malwarebytes", "Avast", "Kaspersky", "ESET", "Bitdefender", "NordVPN", "VideoLAN", "win.rar", "Blender", "OBS Project", "TeamViewer", "AnyDesk", "Wargaming", "Tencent", "NetEase", "Cognosphere", "HoYoverse", "Notepad++", "Igor Pavlov", "Mojang", "Wondershare", "Sony", "Nintendo", "Steelseries", "HP Inc", "Dell", "Lenovo", "Acer", "MSI", "Micro-Star", "GIGABYTE", "ASRock", "Samsung", "Western Digital", "Seagate", "Realtek Semiconductor", "Qualcomm", "Broadcom", "MediaTek", "Synaptics", "Elan Microelectronics", "Waves Audio", "Image-Line", "Native Instruments", "Ableton", "Steinberg", "Focusrite", "Behringer", "Native Instruments GmbH", "ASUSTeK", "AO Kaspersky Lab", "Intel(R)"],
+
+  "heavyAppNames": ["steam", "steamwebhelper", "vrchat", "blender", "obs64", "obs32", "ffmpeg", "handbrake", "7z", "winrar", "python", "pythonw", "node", "java", "javaw", "dotnet", "msbuild", "devenv", "code", "cl", "link", "cargo", "rustc", "go", "docker", "vmmem", "vmware-vmx", "virtualboxvm", "qemu-system-x86_64", "chrome", "msedge", "firefox", "opera", "brave", "yandex", "unity", "unrealeditor", "eac", "beservice", "easyanticheat", "vgc", "fl64", "fl", "cubase", "ableton live", "reaper", "premiere pro", "afterfx", "photoshop", "davinciresolve", "resolve", "gta5", "fivem", "cs2", "csgo", "dota2", "minecraft", "javaw"],
+
+  "securityTools": ["taskmgr.exe", "procexp.exe", "procexp64.exe", "processhacker.exe", "systeminformer.exe", "perfmon.exe", "resmon.exe", "msconfig.exe", "regedit.exe", "autoruns.exe", "autoruns64.exe", "mbam.exe", "mbamtray.exe", "msmpeng.exe", "hitmanpro.exe", "adwcleaner.exe", "rkill.exe", "tdsskiller.exe", "cureit.exe", "wireshark.exe", "procmon.exe", "procmon64.exe", "x64dbg.exe", "x32dbg.exe", "dnspy.exe", "ida.exe", "ida64.exe", "ollydbg.exe", "tcpview.exe", "cmd.exe", "powershell.exe", "mmc.exe", "gpedit.msc", "taskschd.msc", "services.msc"],
+  "securityToolsBenign": ["compattelrunner.exe", "devicecensus.exe", "mpdlpcmd.exe", "upfc.exe", "software_reporter_tool.exe", "securityhealthsystray.exe", "microsoftedgeupdate.exe", "onedrive.exe", "searchapp.exe", "widgets.exe", "gamebar.exe", "yourphone.exe", "phoneexperiencehost.exe", "teams.exe", "cortana.exe", "startmenuexperiencehost.exe", "xboxpcapp.exe", "gamebarpresencewriter.exe"],
+
+  "avDomains": ["virustotal.com", "kaspersky.com", "kaspersky.ru", "drweb.com", "drweb.ru", "eset.com", "malwarebytes.com", "avast.com", "avg.com", "avira.com", "bitdefender.com", "symantec.com", "norton.com", "mcafee.com", "sophos.com", "trendmicro.com", "f-secure.com", "comodo.com", "emsisoft.com", "gdatasoftware.com", "clamav.net", "windowsupdate.com", "update.microsoft.com", "defender.microsoft.com", "hybrid-analysis.com", "any.run", "virscan.org", "metadefender.opswat.com", "bleepingcomputer.com", "hitmanpro.com", "superantispyware.com", "zillya.com", "zonealarm.com", "panda.com", "pandasecurity.com", "webroot.com", "crowdstrike.com", "sentinelone.com", "cynet.com", "gridinsoft.com", "unhackme.com", "cezurity.com", "quickheal.com", "k7computing.com", "ikarussecurity.com", "vipre.com"],
+
+  "defenderExclusionDanger": {
+    "extensions": [".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".tmp", ".scr", ".sys"],
+    "pathRegex": [
+      "^[a-z]:\\\\?$",
+      "^[a-z]:\\\\(programdata|users|windows|windows\\\\temp|program files|program files \\(x86\\))\\\\?$",
+      "^[a-z]:\\\\users\\\\[^\\\\]+\\\\?$",
+      "\\\\appdata\\\\(roaming|local|locallow)\\\\?$",
+      "\\\\appdata\\\\local\\\\temp\\\\?$",
+      "^%(temp|tmp|appdata|localappdata|programdata|userprofile|public)%\\\\?$",
+      "^[a-z]:\\\\windows\\\\temp\\\\?$"
+    ]
+  },
+
+  "persistenceNameRules": [
+    { "id": "NAME.MS.SYSTEM_HEALTH", "regex": "^windows system health", "weight": 25, "text": "Name imitates a Windows health/maintenance task (seen in 2026 GPU-miner campaign)" },
+    { "id": "NAME.RUN.WINSYSCACHE", "regex": "^winsyscache$", "weight": 25, "text": "Run value name used by a known miner campaign" },
+    { "id": "NAME.SVC.DRVSVC", "regex": "^drvsvc$", "weight": 25, "text": "Service name used by SilentCryptoMiner (mimics a driver/imaging service)" },
+    { "id": "NAME.MS.UPDATER_FAKE", "regex": "^(google|adobe|java|nvidia|realtek|intel|amd|opera|yandex)[a-z ]*(update|updater|helper|service|task)[a-z ]*(machine|core|ua|qc|host|sys)?$", "weight": 6, "text": "Vendor-updater-like name (check the file it launches)" },
+    { "id": "NAME.MS.GENERIC", "regex": "^(windows|microsoft|system|service|driver|runtime|security|defender|update|cache|health|host)[ _-]?(update|defender|security|health|cache|runtime|driver|service|host|task|monitor|check|manager|helper|control)s?( service| task)?$", "weight": 8, "text": "Generic Windows-sounding name" },
+    { "id": "NAME.HOMOGLYPH_TAG", "regex": "^(reaitek|rea1tek|realtec|microsofl|micr0soft|nvldia|lntel)", "weight": 25, "text": "Look-alike spelling of a well-known vendor" }
+  ],
+
+  "knownIocPaths": [
+    { "id": "IOC.PATH.RUNTIMEHOST_CACHES", "regex": "\\\\appdata\\\\(local|roaming)\\\\microsoft\\\\windows\\\\caches\\\\[0-9a-f]{8}\\\\", "weight": 35, "text": "Executable in a Windows\\Caches\\<8hex> folder (2026 campaign install path)" },
+    { "id": "IOC.PATH.PROGRAMDATA_FAKE_VENDOR", "regex": "\\\\programdata\\\\(windowstask|windows tasks service|reaitekhd|realtekhd|rdpwinst)\\b", "weight": 45, "text": "ProgramData folder used by a miner/RAT bundle seen on this machine's earlier infection" },
+    { "id": "IOC.PATH.SYSFILES_APPDATA", "regex": "\\\\appdata\\\\roaming\\\\(sysfiles|driversupdate|windowshelper)\\\\", "weight": 30, "text": "AppData folder with a system-sounding name used by miner droppers" }
+  ],
+
+  "knownIocTaskFolders": [
+    { "id": "IOC.TASK.WINDOWSBACKUP_EXTRA", "folder": "\\Microsoft\\Windows\\WindowsBackup", "allowedNames": ["ConfigNotification", "Windows Backup Monitor"], "weight": 30, "text": "Unknown task inside \\Microsoft\\Windows\\WindowsBackup (used by a miner bundle previously found on this machine)" }
+  ],
+
+  "browserMinerStrings": ["coinhive", "coin-hive", "authedmine", "cryptonight.wasm", "cryptonight.js", "webminerpool", "deepminer", "jsecoin", "coinimp", "crypto-loot", "cryptoloot", "minero.cc", "monerominer", "webmr.js", "miner.start(", "coinhive.anonymous", "cryptonightwasmwrapper", "stratum+tcp", "wss://", "xmrig", "randomx"],
+  "browserMinerStringsStrong": ["coinhive", "coin-hive", "authedmine", "cryptonight.wasm", "cryptonight.js", "webminerpool", "deepminer", "jsecoin", "coinimp", "crypto-loot", "cryptoloot", "minero.cc", "monerominer", "webmr.js", "coinhive.anonymous", "cryptonightwasmwrapper", "stratum+tcp"],
+  "browserSearchHosts": ["google.", "bing.com", "duckduckgo.com", "yandex.", "ya.ru", "yahoo.", "ecosia.org", "search.brave.com", "brave.com", "opera.com", "baidu.com", "mail.ru", "go.mail.ru", "startpage.com", "qwant.com", "ask.com", "aol.com", "naver.com", "seznam.cz", "rambler.ru", "kagi.com", "searx", "perplexity.ai", "yahoo.co.jp", "wikipedia.org", "youtube.com", "chatgpt.com", "gemini.google.com", "copilot.microsoft.com", "microsoft.com", "msn.com", "office.com", "live.com", "newtab", "chrome://", "edge://", "about:", "opera://", "browser://", "vivaldi://", "brave://"],
+  "browserRiskyPermissions": ["<all_urls>", "webRequestBlocking", "proxy", "nativeMessaging", "debugger", "management", "cookies", "history", "downloads", "clipboardRead", "declarativeNetRequest"],
+  "browserLaunchFlagsRisky": ["--load-extension", "--proxy-server", "--proxy-pac-url", "--disable-web-security", "--remote-debugging-port", "--disable-extensions-except", "--no-sandbox", "--disable-site-isolation-trials", "--host-rules"],
+
+  "vulnerableDrivers": {
+    "names": ["winring0", "winring0x64", "inpoutx64", "asio", "phymem", "rtcore64", "gdrv", "cpuz", "speedfan", "atillk64"],
+    "note": "Signed but vulnerable drivers abused by miners (e.g. WinRing0 for MSR access) and by BYOVD attacks. Also used by legitimate hardware-monitor tools, therefore only a weak indicator alone."
+  }
+}

@@ -1,0 +1,51 @@
+name: False positive
+description: MineHunter flagged a normal program (or a security tool flagged MineHunter)
+title: "[FP] "
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks — a wrong verdict is treated as a bug. Please do not upload private files; the evidence text and the SHA-256 are enough.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Who flagged what?
+      options:
+        - MineHunter flagged a normal program / setting
+        - Another antivirus / scanner flagged MineHunter itself
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MineHunter version and rules version
+      description: Shown in the window (top right and "Rules" card) or `MineHunter-cli.exe rules-info`
+      placeholder: "1.0.0 / rules 2026.09.25.1"
+    validations:
+      required: true
+  - type: input
+    id: what
+    attributes:
+      label: What is the program?
+      description: Name, publisher, where you got it (official site, Steam, Microsoft Store…)
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: The finding
+      description: Paste the finding from the Results tab (title, verdict, score and the evidence lines) or the block from report.txt
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: hash
+    attributes:
+      label: SHA-256 of the file (if a file)
+      description: "`Get-FileHash <file>` in PowerShell"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Is the file signed? Where does it live? Does it start with Windows?
