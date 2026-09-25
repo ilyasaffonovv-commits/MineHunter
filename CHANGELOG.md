@@ -1,11 +1,14 @@
 # Changelog
 
 ## 1.0.0 (2026-09-25)
-First release.
-- Scanner -> Evidence -> Analyzer -> Risk -> Decision -> Remediation -> Verification pipeline; transparent, corroborated risk scoring.
-- Processes and memory (hollowing, PE in private memory, orphan threads), network-to-process mapping, autostart (Run, startup folders, services/drivers, scheduled tasks incl. hidden, WMI, Winlogon, IFEO, AppInit, LSA, COM), Windows protection tampering, browser extensions and settings, files (static PE analysis, miner strings, masquerade).
-- Quarantine-first reversible remediation with rescan verification; delete-on-reboot for locked files.
-- Modern WPF window (RU/EN), threat graph, reports (report.json / report.txt), update check + verified rule-pack updates (SHA-256, optional RSA signature).
-- 60 built-in self checks; MinerLab benign infection simulator.
-- Rule packs: newest version wins per rule id, `disabledRules` (instant noisy-rule kill), `knownGoodHashes`, per-rule `textRu` and `samples` enforced by the self-test.
-- Rule pack 2026.09.26.1: +21 command-line rules (Defender registry/cloud/service tampering, security-agent killers, miner competitor killers, service/task/Run persistence into user folders, WMI subscriptions, reflective PowerShell, certutil/msiexec/mshta LOLBins, hidden-download PowerShell), +7 staging-folder path IOCs, +28 miner program names.
+
+First public release.
+
+- Scanners for processes and process memory, network connections, autostart locations (registry, startup folders, services, scheduled tasks, WMI), Windows protection settings, browser and VS Code extensions, and files.
+- Risk score from weighted evidence in categories. High Risk and Malware need a definitive item or evidence from several independent categories.
+- Neutralization with quarantine, followed by a rescan. Locked files are deleted on the next reboot.
+- WPF window (English and Russian) with a threat graph, reports as `report.json` and `report.txt`, and `MineHunter-cli.exe` for the console.
+- Version check and rule-pack updates, installed only if the SHA-256 and the RSA signature match.
+- Self test (60 checks) and the MinerLab simulator.
+- Rule packs: for the same rule id the newer pack wins; `disabledRules`, `knownGoodHashes`, per-rule `textRu` and `samples` (checked by the self test).
+- Rule pack 2026.09.26.1 adds 22 command-line rules (Defender registry, cloud and service tampering, killing of security agents and competing miners, service/task/Run persistence in user folders, WMI subscriptions, reflective PowerShell, certutil/msiexec/mshta, hidden PowerShell downloads), 7 path indicators for drop locations and 28 miner program names.

@@ -1,34 +1,38 @@
-# Актуальные майнеры/загрузчики (2025–2026) и что из этого попало в MineHunter
+# Источники правил
 
-Источники — публичные отчёты, найденные 24–25.09.2026 (краткое содержание получено через веб-выборку, детали
-проверяйте по первоисточникам):
+Правила детекта основаны на открытых отчётах о майнерах и загрузчиках 2025 и 2026 годов. Ссылки собраны 24 и 25 сентября 2026 года, краткое содержание получено через веб-выборку, детали стоит проверять по первоисточникам.
 
-* Securelist — [SilentCryptoMiner распространяется как «обход блокировок»](https://securelist.com/silentcryptominer-spreads-through-blackmail-on-youtube/115788/)
-* The Hacker News — [SilentCryptoMiner заразил ~2000 российских пользователей](https://thehackernews.com/2025/03/silentcryptominer-infects-2000-russian.html)
-* The Hacker News (04.2026) — [ISO-приманки: RAT + майнеры, watchdog, WinRing0](https://thehackernews.com/2026/04/researchers-uncover-mining-operation.html)
-* Microsoft Security Blog (26.05.2026) — [GPU-майнинг через отравленный поиск, ScreenConnect и .NET-утилиты](https://www.microsoft.com/en-us/security/blog/2026/05/26/poisoned-search-results-gpu-mining-cryptojacking-campaign-abusing-screenconnect-microsoft-net-utilities/)
-* The Hacker News (09.2026) — [модули REVSTEALER отключают Windows Update и Defender ради майнера](https://thehackernews.com/2026/09/four-revstealer-linked-modules-disable.html)
-* Infosecurity Magazine — [вредоносные расширения VS Code для криптоджекинга](https://www.infosecurity-magazine.com/news/microsoft-vs-code-cryptojacking/)
-* Microsoft Support — [VulnerableDriver:WinNT/Winring0](https://support.microsoft.com/en-us/windows/microsoft-defender-antivirus-alert-vulnerabledriver-winnt-winring0-eb057830-d77b-41a2-9a34-015a5d203c42)
+- Securelist, [SilentCryptoMiner распространяется как средство обхода блокировок](https://securelist.com/silentcryptominer-spreads-through-blackmail-on-youtube/115788/)
+- The Hacker News, [SilentCryptoMiner заразил около 2000 российских пользователей](https://thehackernews.com/2025/03/silentcryptominer-infects-2000-russian.html)
+- The Hacker News, апрель 2026, [ISO-приманки, RAT и майнеры, watchdog, WinRing0](https://thehackernews.com/2026/04/researchers-uncover-mining-operation.html)
+- Microsoft Security Blog, 26.05.2026, [GPU-майнинг через отравленный поиск, ScreenConnect и .NET-утилиты](https://www.microsoft.com/en-us/security/blog/2026/05/26/poisoned-search-results-gpu-mining-cryptojacking-campaign-abusing-screenconnect-microsoft-net-utilities/)
+- The Hacker News, сентябрь 2026, [модули REVSTEALER отключают Windows Update и Defender ради майнера](https://thehackernews.com/2026/09/four-revstealer-linked-modules-disable.html)
+- Infosecurity Magazine, [вредоносные расширения VS Code для криптоджекинга](https://www.infosecurity-magazine.com/news/microsoft-vs-code-cryptojacking/)
+- Microsoft Support, [VulnerableDriver:WinNT/Winring0](https://support.microsoft.com/en-us/windows/microsoft-defender-antivirus-alert-vulnerabledriver-winnt-winring0-eb057830-d77b-41a2-9a34-015a5d203c42)
 
-## Технические приёмы → детекты MineHunter (общие, не привязанные к одному семейству)
+## Приёмы и соответствующие проверки
 
-| Приём в дикой природе | Как ловит MineHunter |
+Здесь перечислено только то, что есть в коде. Идентификаторы правил описаны в [RULES.md](RULES.md).
+
+| Приём | Проверка |
 |---|---|
-| Process hollowing в подписанные .NET-утилиты (`InstallUtil`, `RegAsm`, `RegSvcs`, `MSBuild`, `AppLaunch`, `AddInProcess`, `aspnet_compiler`) и в `dwm.exe`, `nslookup.exe`, `svchost.exe` | сверка заголовка образа в памяти с файлом на диске (TimeDateStamp/SizeOfImage/EntryPoint), отсутствие mapped-file, PE в приватной executable-памяти; «LOLBin-цель + внешняя сеть + без аргументов»; `dwm.exe` с внешним соединением |
-| Раздутые файлы (680–800 МБ, повторяющиеся блоки) против песочниц | PE > 100 МБ, не подписан, малая энтропия/повторы в трёх выборках |
-| Исключения Defender (`AppData`, `ProgramData`, `*.exe`, имена майнеров) | реестр `Exclusions` (local + policy): путь целиком диск/`ProgramData`/Temp/AppData, `.exe`, имена майнеров |
-| Отключение Defender/Windows Update, sleep/hibernate | блок «Состояние защиты» (только информирование, вердикт малвари сам по себе не выносится) |
-| Постоянство в 3–6 местах сразу (`Windows System Health*` задачи, Run `WinSysCache`, ярлык в Startup) | все механизмы связываются в один граф; `Microsoft`-подобные имена задач с не-Microsoft действием; повторяющийся триггер ≤ 5 мин; Run+Task+Startup на один файл |
-| Служба-маскировка (`DrvSvc` с описанием «Windows Image Acquisition») | служба с системным описанием, но образ не подписан/в пользовательской папке |
-| Скрытые файлы System+Hidden в `%LocalAppData%\Microsoft\Windows\Caches\<8hex>\` | любой PE внутри `AppData\…\Microsoft\Windows\**` вне известных подпапок; атрибуты Hidden+System |
-| DLL side-loading (`autorun.dll` рядом с подписанной утилитой) | подписанный EXE + неподписанная DLL из его же папки, загруженная в процесс |
-| Уязвимый драйвер WinRing0 для тюнинга MSR | драйверные службы (`Type=1`) и `WinRing0*.sys`; учитывается законное использование (HWiNFO и т.п.) → слабая улика, сильная в комбинации |
-| Watchdog, восстанавливающий удалённое | граф: взаимные ссылки процесс↔задача/служба, повторяющийся триггер, респавн; лечение целой компонентой + rescan |
-| Майнер паузится при запуске Task Manager/Process Hacker | CPU — лишь одна из улик; смотрим на статичные признаки и persistence, а не только на нагрузку |
-| Конфиг с Pastebin/GitHub, пул-прокси на 443 | строки/аргументы (stratum, wallet-регэксп, `--donate-level`), постоянное соединение неподписанного процесса, DNS-кэш по маскам пулов |
-| Вредоносные расширения VS Code и браузеров | сканер расширений (manifest + майнер-строки + force-install политики) |
-| Отравленный поиск / LLM-рекомендации → фейковые «утилиты» (CrystalDiskInfo, HWMonitor, DDU, FurMark…) | поддельный бренд: имя/описание известной утилиты у неподписанного файла в пользовательской папке |
+| Process hollowing в подписанные .NET-утилиты (`InstallUtil`, `RegAsm`, `RegSvcs`, `MSBuild`, `AppLaunch`, `AddInProcess`, `aspnet_compiler`) и в `dwm.exe`, `nslookup.exe`, `svchost.exe` | Заголовок образа в памяти сравнивается с файлом на диске (`SizeOfImage`, `EntryPoint`, `TimeDateStamp`, решающая улика при расхождении в двух и более полях) и проверяется, привязан ли основной образ к файлу. PE-образы в приватной исполняемой памяти. Внешние соединения у процессов из списка `neverExternalNetwork` (`NET.SYSTEM_TOOL_EXTERNAL`). Системные утилиты из списка `hollowTargets`, полностью приостановленные дольше минуты (`PROC.SUSPENDED_LOLBIN`). |
+| Раздутые файлы против песочниц | `PE.BLOATED`: файл больше 100 МБ с оверлеем больше 50 МБ, в котором почти все проверенные блоки состоят из повторяющихся данных. |
+| Исключения Defender (`AppData`, `ProgramData`, `*.exe`, имена майнеров) | Исключения в реестре, локальные и из политик: целый диск, `ProgramData`, Temp, AppData, расширения, имена майнеров. Правила командной строки для `Add-MpPreference` и изменений реестра. |
+| Отключение Defender и его служб | Правила командной строки `CMD.DEFENDER.*`. Состояние защиты (Defender или другой антивирус, UAC, SmartScreen, брандмауэр, обновления Windows) показывается в блоке состояния системы и вердикта сам по себе не выносит. Отключение сна и гибернации учитывается только как слабая улика в командной строке (`CMD.POWERCFG.NEVER`). |
+| Закрепление сразу в нескольких местах | Все способы автозапуска связываются в один граф, `PERSIST.MULTI` при нескольких способах для одного файла. Имена, характерные для описанных кампаний (`Windows System Health*`, `WinSysCache`, `DrvSvc`, задачи в `\Microsoft\Windows\WindowsBackup`). Задачи под `\Microsoft\` с недоверенным действием. Задача с интервалом повтора не больше 10 минут (`TASK.REPEAT_SHORT`). |
+| Служба под видом компонента Windows | `SVC.FAKE_DESCRIPTION`: описание или имя выдают компонент Windows, а файл службы не подписан. |
+| Скрытые файлы в `%LocalAppData%\Microsoft\Windows\Caches\<8hex>\` | `IOC.PATH.RUNTIMEHOST_CACHES`, `LOC.APPDATA_MS_WINDOWS`, атрибуты Hidden и System (`ATTR.HIDDEN_SYSTEM`). |
+| Подмена DLL (`autorun.dll` рядом с подписанной утилитой) | `PROC.SIDELOAD_CANDIDATE`: подписанный exe загрузил неподписанную DLL из своей пользовательской папки. Только для загруженных модулей запущенных процессов. |
+| Уязвимый драйвер WinRing0 для настройки MSR | `DRV.VULNERABLE_KNOWN`: драйвер из списка имён в правилах. Вес 14, потому что тот же драйвер используют утилиты мониторинга железа. |
+| Watchdog, восстанавливающий удалённое | Связи процесс, задача, служба в графе, `WATCHDOG.MULTI_PAYLOAD`, `TASK.REPEAT_SHORT`, `SVC.AUTO_RESTART_UNTRUSTED`. При обезвреживании процессы сначала замораживаются, затем убирается вся находка целиком и запускается повторная проверка. Отдельного признака «воскрес после удаления» нет. |
+| Конфигурация майнера и пул-прокси | Строки и параметры в командной строке (`stratum`, шаблоны кошельков Monero и Ethereum, `--donate-level`), домены пулов из DNS-кэша, порты майнинга, долгие внешние соединения неподписанных программ. Прокси на порту 443 отдельно не распознаётся. |
+| Вредоносные расширения VS Code и браузеров | Расширения VS Code, Cursor и Windsurf: код майнера и скрипты, отключающие защиту или скачивающие код. Расширения браузеров: код майнера, опасные разрешения, установка по политике. |
+| Подмена имён и сведений о версии | Гомоглифы (`ReaItekHD`, заглавная I вместо l), имена системных файлов не в папке Windows, сведения о версии, выдающие компонент Windows у неподписанного файла (вес 22), и сведения известного производителя без его подписи (вес 3, так выглядят и обычные сборки). |
 
-Честное ограничение: правила — это эвристики и списки индикаторов. Они не дают гарантии обнаружения любых новых
-вредоносных программ, поэтому в MineHunter заложены обновляемые пакеты правил (см. `docs/UPDATES.md`).
+Не реализовано:
+- Сопоставление имён известных утилит (CrystalDiskInfo, HWMonitor, DDU, FurMark) с неподписанными файлами из пользовательских папок. Такие файлы попадают под общие правила: расположение, отсутствие подписи, автозапуск, строки майнера.
+- Отдельное правило для ScreenConnect и других инструментов удалённого доступа. Есть правила для RDP Wrapper (`CMD.RDP.WRAPPER`, `TAMPER.TERMSERVICE_DLL`).
+- Обнаружение майнеров, которые приостанавливаются при запуске диспетчера задач. Загрузка CPU остаётся слабой уликой, вердикт строится на статических признаках и автозапуске.
+
+Правила эвристические и не гарантируют обнаружения новых программ. Поэтому пакеты правил обновляются отдельно от программы ([UPDATES.md](UPDATES.md)).

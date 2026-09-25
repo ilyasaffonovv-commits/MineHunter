@@ -1,18 +1,18 @@
 # Security policy
 
-## Reporting a vulnerability in MineHunter itself
+## Reporting a vulnerability in MineHunter
 
-Please **do not** open a public issue for a security problem. Use GitHub's private reporting: **Security → Report a vulnerability** on this repository. Describe what an attacker gains and how to reproduce it; a proof of concept is welcome. You will get an answer as soon as possible; fixes are released as a new version and mentioned in the [changelog](CHANGELOG.md).
+Please do not open a public issue for a security problem. Use GitHub's private reporting: Security, then "Report a vulnerability" on this repository. Describe what an attacker gains and how to reproduce it. A proof of concept helps. Fixes are released as a new version and listed in the [changelog](CHANGELOG.md).
 
-Especially interesting: ways to make MineHunter delete or quarantine something it should not, to trust an attacker's file, to accept an unsigned/forged rule pack, to write outside its data folder, or to escalate privileges through its data folder or update mechanism.
+Of particular interest: making MineHunter delete or quarantine something it should not, making it trust an attacker's file, accepting an unsigned or forged rule pack, writing outside its data folder, or gaining privileges through its data folder or update mechanism.
 
-## Design points you can rely on (and attack)
+## What to rely on
 
-* Network: a single HTTPS `GET` of the public `version.json` (and the rule pack it names). No data about the machine is sent. Plain `http` is accepted only for loopback addresses (tests).
-* A rule pack is installed only if its SHA-256 matches the manifest **and** its RSA-SHA256 signature verifies against the public key compiled into the program. The private key is never stored in this repository.
-* `%ProgramData%\MineHunter` is writable only by SYSTEM and Administrators.
-* Neutralization is quarantine-first and reversible; critical Windows processes and trusted system files are never touched.
+- Network: one HTTPS GET of the public `version.json` and of the rule pack it names. Nothing about the machine is sent. Plain `http` is accepted only for loopback addresses, which the tests use.
+- A rule pack is installed only if its SHA-256 matches the manifest and its RSA-SHA256 signature verifies against the public key compiled into the program. The private key is not in this repository.
+- `%ProgramData%\MineHunter` is writable only by SYSTEM and Administrators.
+- Neutralization saves what it removes before removing it. Critical Windows processes and trusted system files are not touched.
 
 ## Not a vulnerability
 
-Detection gaps (a miner or persistence trick MineHunter misses) and false positives are normal bugs — use the *Missed detection* / *False positive* issue templates. MineHunter is a heuristic, on-demand scanner and says so.
+A miner or persistence trick that MineHunter misses, and a false positive, are ordinary bugs. Please use the "Missed detection" or "False positive" issue templates. MineHunter is a heuristic scanner that runs on demand.

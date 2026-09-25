@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Do not attach live malware.** Describe the technique or link a public analysis. `MineHunter-cli.exe scan --full --dump entities.json` produces a research dump of what the scan saw (remove private paths before sharing).
+        Do not attach live malware. Describe the technique or link a public analysis. `MineHunter-cli.exe scan --full --dump entities.json` produces a research dump of what the scan saw (remove private paths before sharing).
   - type: input
     id: family
     attributes:
@@ -28,7 +28,7 @@ body:
     id: version
     attributes:
       label: MineHunter version and rules version
-      placeholder: "1.0.0 / rules 2026.09.25.1"
+      placeholder: "1.0.0 / rules 2026.09.26.1"
     validations:
       required: true
   - type: textarea

@@ -28,11 +28,10 @@ for m in re.finditer(r'\{\s*"([A-Z][A-Z0-9_.]+)"\s*,\s*' + STR + r'\s*\}', loc):
 
 core = json.load(open(os.path.join(root, 'rules', 'core.json'), encoding='utf-8'))
 out = []
-out.append('# Каталог правил MineHunter (генерируется из исходников)\n')
-out.append('Каждая улика — это правило с **идентификатором**, **категорией** и **весом**. Итоговый балл считается прозрачно (см. `RISK_MODEL.md`): '
-           'улики одной категории ограничены потолком, повторяющиеся сигналы весят меньше, а вердикт «Высокий риск»/«Вредоносное» выдаётся только когда сходятся '
-           '**независимые** категории. Отрицательный вес — «доверие» (подпись известного издателя и т.п.).\n')
-out.append('Правил в коде: **%d**, правил командной строки в `rules/core.json`: **%d**. Версия набора правил: `%s`.\n' % (len(rules), len(core.get('cmdlinePatterns', [])), core.get('version')))
+out.append('# Каталог правил (генерируется из исходников)\n')
+out.append('Каждая улика это правило с идентификатором, категорией и весом. Как из улик получается вердикт, описано в [RISK_MODEL.md](RISK_MODEL.md). '
+           'Отрицательный вес означает доверие (например, подпись известного издателя).\n')
+out.append('Правил в коде: %d, правил командной строки в `rules/core.json`: %d, версия пакета правил: `%s`.\n' % (len(rules), len(core.get('cmdlinePatterns', [])), core.get('version')))
 bycat = collections.defaultdict(list)
 for rid, v in rules.items():
     bycat[v['cat']].append((rid, v))
@@ -59,7 +58,7 @@ out.append('| Правило | Вес | Что означает |')
 out.append('|---|---|---|')
 for c in core.get('knownIocPaths', []):
     out.append('| `%s` | %s | %s |' % (c['id'], c.get('weight'), (c.get('textRu') or ru.get(c['id']) or c.get('text', '')).replace('|', '\\|')))
-out.append('\nИмён файлов известных майнеров в наборе: **%d** (`minerFileNames`); доверенных издателей: **%d**; строк-маркеров майнеров: **%d**.' % (len(core.get('minerFileNames', [])), len(core.get('trustedPublishers', [])), sum(len(v) for v in core.get('minerStrings', {}).values())))
-dst =os.path.join(root, 'docs', 'RULES.md')
+out.append('\nВ пакете: имён файлов известных майнеров %d (`minerFileNames`), доверенных издателей %d, строк-маркеров майнеров %d.' % (len(core.get('minerFileNames', [])), len(core.get('trustedPublishers', [])), sum(len(v) for v in core.get('minerStrings', {}).values())))
+dst = os.path.join(root, 'docs', 'RULES.md')
 open(dst, 'w', encoding='utf-8').write('\n'.join(out) + '\n')
 print('written', dst, sum(len(v) for v in bycat.values()), 'rules')

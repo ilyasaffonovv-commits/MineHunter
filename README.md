@@ -2,91 +2,109 @@
 
 [Русский](README.ru.md) | English
 
-**Finds and kills hidden cryptominers, their watchdogs and every trick they use to survive a reboot.**
-Double-click, wait a minute, read *what* was found, *where*, *why* (evidence and scores) and what to do. It is an auxiliary tool for hunting suspicious processes, autostart entries, tasks, services, WMI subscriptions, browser extensions and files — **not** an antivirus.
+MineHunter is a scanner for hidden cryptominers and the persistence mechanisms they leave behind, for Windows 10/11 x64. It looks at running processes, autostart locations, scheduled tasks, services, WMI subscriptions, browser extensions and files, shows the evidence behind every finding, and can move what it finds into a quarantine. It runs on demand and is not an antivirus.
 
 [![build](https://github.com/ilyasaffonovv-commits/MineHunter/actions/workflows/build.yml/badge.svg)](https://github.com/ilyasaffonovv-commits/MineHunter/actions/workflows/build.yml)
-[![release](https://img.shields.io/github/v/release/ilyasaffonovv-commits/MineHunter?color=Navy)](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest)
-![downloads](https://img.shields.io/github/downloads/ilyasaffonovv-commits/MineHunter/total?color=Navy)
-[![license](https://img.shields.io/github/license/ilyasaffonovv-commits/MineHunter?color=Navy)](LICENSE)
-
-> [!NOTE]
-> ### Some antivirus products may distrust an unsigned tool that talks about miners. The release EXEs contain no miner signatures in plain text (the rules are embedded compressed) and are published with SHA-256 sums. If any scanner flags them — or if MineHunter flags **your normal program** — please open an issue with the *False positive* template: every such report is treated as a bug.
-
-## ⬇ [Download the latest release](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest)
-Windows 10 / 11 x64. Nothing to install: unzip and run `MineHunter.exe` (.NET Framework 4.7.2+ is built into Windows). Administrator rights are requested so that services, tasks, WMI and other users' processes can be seen.
+[![release](https://img.shields.io/github/v/release/ilyasaffonovv-commits/MineHunter)](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest)
+[![license](https://img.shields.io/github/license/ilyasaffonovv-commits/MineHunter)](LICENSE)
 
 ![Results](docs/img/en/1_results_en.png)
 
-## How to use
+## Download
 
-1. Unzip the archive into a separate folder and start `MineHunter.exe`.
-2. It checks whether a newer version exists (top right) and installs newer detection rules by itself (verified by SHA-256 and an RSA signature).
-3. A **Quick scan** starts automatically (~1 minute). **Full scan** walks all fixed drives (first pass ≈ 5–8 min, later passes ≈ 3 min thanks to a cache). **Custom scan** takes a folder or drive.
-4. Every finding shows: **what** was found, **where**, **why** (each piece of evidence with its score and category), the **infection chain** (autostart → file → process → network) and the recommended action, with tick-boxes for each step.
-5. **Neutralize** stops the processes, removes autostart entries and moves files into a reversible **Quarantine**. Then MineHunter **rescans and only reports success if the rescan confirms it**. Files that are locked are removed on the next reboot.
-6. Wrong verdict? **Mark as safe** (by path + SHA-256), or restore anything from the *Quarantine* tab.
+Take `MineHunter-v1.0.0.zip` from the [latest release](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest), unzip it into a folder and run `MineHunter.exe`. The SHA-256 of the archive is in the release notes.
 
-Reports are written to `%ProgramData%\MineHunter\Reports` (`report.json`, `report.txt`). The window language switches between RU and EN in the corner.
+Requirements: Windows 10 or 11 x64 and .NET Framework 4.7.2 or newer, which is already part of current Windows builds. There is no installer. The program asks for administrator rights; without them services, scheduled tasks, WMI and other users' processes cannot be read.
+
+## Running
+
+On start MineHunter downloads `version.json` from this repository (skipped when offline), installs a newer rule pack if one is published, and starts a quick scan. Both can be turned off on the About tab.
+
+- Quick: processes, autostart, tasks, services, WMI, protection settings, browsers, and the usual drop locations (Temp, AppData, Downloads, Desktop, ProgramData, drive roots).
+- Full: all fixed drives, stops after 45 minutes. Results for unchanged files are cached, so repeat scans are faster.
+- Custom: one folder or drive.
+
+Measured on the author's PC (24 logical cores, about 82,000 files on the fixed drives): quick scan 50 to 60 s with a warm cache and about 110 s with a cold one; full scan 5 to 8.5 minutes the first time and 2 min 45 s to 4 min 10 s with a warm cache. A slower disk or CPU will take longer. See [docs/TEST_REPORT.md](docs/TEST_REPORT.md).
+
+Findings are graded Suspicious, High Risk or Malware. Items with a low score are listed separately as notes and are not threats. Each finding shows what it is, where it is, every piece of evidence with its score, the chain (autostart entry, file, process, connection) and the suggested steps.
 
 ![Threat graph](docs/img/en/4_graph_en.png)
 
-## What it looks at
+## What is checked
 
-| Area | What exactly |
+| Area | Details |
 |---|---|
-| **Processes & memory** | miner command lines (pool URL, wallet, algorithm), process hollowing (image in memory ≠ file on disk), PE images in private memory, threads outside any module, system-named processes (`svchost.exe`…) running from user folders, impossible parents, DLL side-loading, sustained CPU/GPU load (only ever a *weak* signal) |
-| **Network ↔ process** | connections per PID, mining ports, pool domains (via the DNS cache), long-lived external connections of unsigned programs |
-| **Autostart** | Run/RunOnce, startup folders, services & drivers (incl. known vulnerable drivers), scheduled tasks (incl. hidden ones, `SD`-stripped tasks and `\Microsoft\…` impostors), WMI subscriptions, Winlogon, IFEO, AppInit, LSA, COM hijacks and more |
-| **Windows protection** | Defender exclusions, disabled real-time protection, UAC / SmartScreen / firewall state, hosts-file blocking of security sites, blocked security tools, proxies |
-| **Browsers** | Chromium family + Firefox: extensions (mining **code**, not a mere mention in a block-list), risky permissions, search / home-page hijack, launch flags in shortcuts |
-| **Files** | static PE analysis (signature, entropy, imports, overlay, bloated files), miner strings, masquerade (fake system names, look-alike folders such as `system92`, fake version info), hidden executables in the Recycle Bin and `AppData\Microsoft\Windows` |
+| Processes | Miner command lines (pool URL, wallet, algorithm). System-named processes running outside the Windows folder. Unexpected parent processes. Signed programs that load an unsigned DLL from their own user-writable folder. CPU load, and GPU load when the "GPU Engine" performance counters are available. |
+| Process memory | Image header in memory compared with the file on disk (hollowing). PE images in private executable memory. Threads that start outside every loaded module. System utilities left suspended. |
+| Network | TCP connections per process, mining ports, pool domains taken from the DNS cache, long-lived external connections of unsigned programs, external connections of programs that normally have none (`dwm.exe`, `InstallUtil.exe` and similar). |
+| Autostart | Run and RunOnce keys, startup folders, services and drivers (including known vulnerable drivers), scheduled tasks (hidden ones, tasks with a removed security descriptor, tasks placed under `\Microsoft\`), WMI event subscriptions, Winlogon, IFEO and SilentProcessExit, AppInit_DLLs, AppCertDLLs, LSA packages, HKCU COM registrations, profiler environment variables, BootExecute. |
+| Windows protection | Defender exclusions, disabled real-time protection, UAC, SmartScreen and firewall state, hosts-file entries that block update and security sites, policies that block Task Manager, regedit or listed security tools, firewall rules that allow user-folder programs. |
+| Browsers | Chrome, Edge, Brave, Opera, Opera GX, Yandex, Vivaldi, Avast Secure Browser, Chromium and Firefox: extension code, risky permissions, forced installs by policy, changed search engine and start page, browser shortcuts with risky flags. VS Code, Cursor and Windsurf extensions are checked for miner code and for scripts that disable protection. |
+| Files | PE analysis (signature, entropy, imports, overlay, padded files), miner strings, system file names in the wrong folder, look-alike folders such as `system92`, executables in the Recycle Bin and in `AppData\Microsoft\Windows`. |
 
-The full rule catalogue with weights is in [docs/RULES.md](docs/RULES.md); what is known about current miner families and tricks (2025–2026) and how it maps to detections is in [docs/THREAT_RESEARCH.md](docs/THREAT_RESEARCH.md).
+The rules are listed in [docs/RULES.md](docs/RULES.md). What the rules are based on is described in [docs/THREAT_RESEARCH.md](docs/THREAT_RESEARCH.md).
 
-## Why it does not flag your normal programs
+A single weak signal never raises an object to High Risk. Being unsigned, running from AppData or using CPU is common in ordinary software, so these signals carry small weights and caps. High Risk needs a definitive item (for example a complete miner command line) or evidence from at least two independent categories. Signed files from known publishers and Windows components have their own weak signals reduced. [docs/RISK_MODEL.md](docs/RISK_MODEL.md) has the exact rules.
 
-Unsigned, "runs from AppData" or "uses CPU" describe half of all honest software (games, launchers, indie tools). So each signal is a *piece of evidence* with a weight, a category and a cap; **High Risk / Malware needs several independent kinds of evidence to agree** (a definitive miner command line, a masquerading name *and* running from the wrong place, persistence *and* behaviour…). Trusted publishers, OS files and NGEN images reduce a file's own score; data files (block-lists) are not code; installers and helper scripts of signed products are recognised. The score is never a mystery — every number in a verdict traces back to a rule. See [docs/RISK_MODEL.md](docs/RISK_MODEL.md).
+## What can be fixed
+
+Neutralize runs the selected steps of a finding: freeze the processes, remove autostart entries, kill the processes, move the files to quarantine. It then scans again and reports a finding as fixed only if the second scan no longer sees it. By default only the steps for High Risk and Malware findings are selected. Critical Windows processes and trusted system files are never touched.
+
+- Files, scheduled tasks, services, registry values, WMI subscriptions, Defender exclusions, hosts entries and browser extensions are saved before removal and can be restored from the Quarantine tab. Quarantined files are stored XOR-masked and checked against their SHA-256 on restore.
+- Firewall rules are removed and only recorded, they are not restored automatically. A killed process cannot be brought back.
+- A file that is locked is renamed and deleted on the next reboot.
+- "Mark as safe" adds a file (path and SHA-256) to an allow list. Wrong verdicts can be reported with the false positive issue template.
+
+## Limitations
+
+- The checks are heuristic and run on demand. There is no kernel driver and no real-time protection. Kernel rootkits and samples that leave no trace on disk, in memory or in autostart can be missed. Whatever could not be examined (protected processes, folders without access, a scan stopped by its time limit) is listed in the report.
+- It has not been run against real malware samples. Testing used the benign simulator in `tests/MinerLab` and one real machine. Windows 10 and low-end hardware were not tested.
+- The executables are not code-signed. Some antivirus products distrust unsigned programs. The EXE contains no miner strings in plain text (the rule pack is embedded compressed, and the self test checks the EXE for markers), but a scanner may still flag it. Please report that, and any normal program that MineHunter flags, with the false positive template.
+- The detailed documentation in `docs/` is in Russian.
 
 ## Command line
 
-Use `MineHunter-cli.exe` (same program, console subsystem — it waits and writes to stdout).
+`MineHunter-cli.exe` is the same program built for the console subsystem: it waits for completion and writes to stdout.
 
-| Command | Description |
-|:---|:---|
-| `scan --quick` / `--full` / `--path <dir>` | choose the scope (default: quick) |
-| `--fix [--yes] [--min suspicious\|high\|malware] [--only <text>] [--all-steps]` | neutralize findings (asks for `--yes`; default level: high risk and up; `--only` restricts to items containing the text) |
-| `--report-dir <dir>` `--json <file>` `--dump <file>` | where reports go; extra JSON copy; dump every scanned entity with its evidence (research) |
-| `--no-browsers` `--no-memory` `--no-files` `--no-cache` `--sample-ms <n>` `--quiet` | speed / scope switches |
-| `quarantine list \| restore <id> [--to <path>] \| delete <id> \| delete-all` | quarantine manager |
-| `allow <path>` | mark a file safe (path + SHA-256) |
-| `update-check` / `update-rules` | check the manifest / install verified rules |
-| `markers <file>` | list every miner marker found inside a file (explains "Cryptominer files" findings) |
-| `rules-info` · `selftest` · `--version` | loaded rule packs · 60 built-in self checks · version |
+```
+MineHunter-cli.exe scan [--quick | --full | --path <dir>] [--fix [--yes] [--min suspicious|high|malware] [--only <text>] [--all-steps]]
+                        [--report-dir <dir>] [--json <file>] [--dump <file>]
+                        [--no-browsers] [--no-memory] [--no-files] [--no-cache] [--sample-ms <n>] [--quiet]
+MineHunter-cli.exe quarantine list | restore <id> [--to <path>] | delete <id> | delete-all
+MineHunter-cli.exe allow <path>
+MineHunter-cli.exe update-check | update-rules
+MineHunter-cli.exe markers <file>
+MineHunter-cli.exe rules-info | selftest | --version
+```
 
-Exit codes: `0` clean, `1` suspicious, `2` high-risk/malware, `3` error, `4` confirmation needed (`--yes`).
+`--fix` asks for confirmation unless `--yes` is given. `--only` limits it to findings whose files, paths or names contain the text. `--dump` writes every scanned object with its evidence. `markers` lists the miner markers found inside a file.
 
-## Updates
+Exit codes: 0 clean, 1 suspicious, 2 high risk or malware, 3 error, 4 confirmation needed.
 
-The only network request MineHunter ever makes is a plain HTTPS `GET` of the public [`version.json`](version.json) (and, if newer, [`rules/core.json`](rules/core.json)). Nothing from your PC is sent. A rule pack is installed **only** if its SHA-256 matches the manifest **and** its RSA signature verifies against the public key built into the program; tampered, unsigned or foreign-signed packs are rejected (covered by the self tests, including a full local-server update flow). New program versions are shown as a link to the release page. Details: [docs/UPDATES.md](docs/UPDATES.md).
+Reports are written to `%ProgramData%\MineHunter\Reports` as `report.json` and `report.txt`.
 
-## Privacy
+## Updates and privacy
 
-No accounts, no telemetry, no cloud lookups. Files, hashes and logs never leave the machine. The data folder `%ProgramData%\MineHunter` (quarantine, allow-list, rule updates, reports) is writable only by SYSTEM and administrators.
+The only network request is an HTTPS GET of [`version.json`](version.json) and, when it is newer, [`rules/core.json`](rules/core.json). Nothing about the computer is sent. A rule pack is installed only if its SHA-256 matches the manifest and its RSA signature verifies against the public key built into the program. A new program version is shown as a link to the release page and is not installed automatically. Details are in [docs/UPDATES.md](docs/UPDATES.md).
 
-## Build from source
+The data folder `%ProgramData%\MineHunter` (quarantine, allow list, downloaded rules, reports) is writable only by SYSTEM and administrators.
+
+## Build
 
 ```
 powershell -ExecutionPolicy Bypass -File build_release.ps1 -Zip
 ```
-Needs the .NET SDK only for building; the result runs anywhere on Windows 10/11. Layout: `src/` (C#, WPF, no third-party packages), `rules/` (detection rules, plain JSON), `tests/` (MinerLab — a **benign** infection simulator — and test tools), `docs/`, `tools/` (maintainer scripts).
 
-## Tests & honesty
+This needs the .NET SDK. It writes `MineHunter.exe` and `MineHunter-cli.exe` next to the script and, with `-Zip`, `dist\MineHunter-v<version>.zip`. The sources are C# for .NET Framework 4.7.2 with WPF and no third-party packages.
 
-* `MineHunter-cli.exe selftest` — 60 checks: path classes, rules, signatures, **false-positive calibration**, decision safety, reversible quarantine, registry round-trip, the whole update flow, and "the EXE contains no miner marker".
-* MinerLab creates harmless look-alikes (system-named files in wrong places, Run keys, hidden tasks, services, WMI, watchdog chains, loopback sockets), MineHunter is measured against them and everything is removed and diffed against a system snapshot afterwards. Results: [docs/TEST_REPORT.md](docs/TEST_REPORT.md). Comparison with MinerSearch: [docs/COMPARISON.md](docs/COMPARISON.md).
-* It is a **heuristic, on-demand** scanner — no kernel driver, no real-time shield. Kernel rootkits and fully encrypted samples with no footprint on disk, in memory or in autostart can be missed. Everything that could not be examined is listed in every report.
+Layout: `src/` program, `rules/` rule pack (JSON), `tests/` MinerLab and test helpers, `docs/`, `tools/` maintainer scripts.
 
-## Contributing · Security · License
+## Tests
 
-New detections, false-positive reports and translations are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: [SECURITY.md](SECURITY.md). MIT License.
+`MineHunter-cli.exe selftest` runs the built-in checks (60 in the 1.0.0 build, the count is printed at the end): path handling, rules and their sample lines, signature checks, scoring on known harmless combinations, quarantine round trips, the update flow against a local server, and the marker check of the EXE itself. It does not use the network and changes nothing outside a temporary folder.
+
+MinerLab (`tests/MinerLab`) creates harmless look-alikes of miner infections: system-named files in wrong folders, Run keys, hidden tasks, services, WMI subscriptions, watchdog chains and loopback sockets. Every object points at the lab's own harmless executable, and a cleanup script removes everything again. Results are in [docs/TEST_REPORT.md](docs/TEST_REPORT.md). A comparison with MinerSearch is in [docs/COMPARISON.md](docs/COMPARISON.md).
+
+## Contributing, security, license
+
+Rule proposals and reports of false positives or missed detections are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities as described in [SECURITY.md](SECURITY.md). MIT license.

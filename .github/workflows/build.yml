@@ -14,13 +14,13 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
-      - name: Build the release folder
+      - name: Build
         shell: pwsh
         run: ./build_release.ps1 -Zip
-      - name: Self tests (60 checks, no external network)
+      - name: Self test
         shell: pwsh
         run: ./MineHunter-cli.exe selftest
-      - name: Rule pack matches the manifest (SHA-256 of rules/core.json == version.json)
+      - name: Check version.json against rules/core.json
         shell: pwsh
         run: |
           $m = Get-Content version.json -Raw | ConvertFrom-Json
