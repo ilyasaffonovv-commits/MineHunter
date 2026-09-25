@@ -1,0 +1,83 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>MineHunter</AssemblyName>
+    <RootNamespace>MineHunter</RootNamespace>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>1.0.0</Version>
+    <AssemblyTitle>MineHunter</AssemblyTitle>
+    <Product>MineHunter</Product>
+    <Description>Local anti-miner and persistence hunter. No telemetry.</Description>
+    <Company>MineHunter</Company>
+    <Copyright>MIT</Copyright>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <WarningLevel>4</WarningLevel>
+    <NoWarn>CS1591;CS0649;CS0169;CS0414;CS8632</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Management" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- single source of truth: <repo>/rules/*.json (also what the update manifest points at) -->
+    <RuleJson Include="../../rules/*.json" />
+    <!-- the window layout is loaded at run time; it is not compiled as a WPF page -->
+    <Page Remove="Gui\*.xaml" />
+    <EmbeddedResource Include="Gui\MainWindow.xaml" LogicalName="ui.MainWindow.xaml" />
+  </ItemGroup>
+
+  <!-- Default rule packs are embedded so the EXE works even if the rules folder is missing. They are embedded COMPRESSED + XOR-masked:
+       a security tool must not contain a plain-text list of miner strings, otherwise other scanners (including anti-miner tools) flag the tool itself.
+       The readable source of truth stays in rules\*.json (shipped next to the EXE). -->
+  <UsingTask TaskName="MaskRules" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutDir ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Directory.CreateDirectory(OutDir);
+        byte[] key = { 0x4D, 0x48, 0x2D, 0x72, 0x75, 0x6C, 0x65, 0x73, 0x2D, 0x6D, 0x61, 0x73, 0x6B, 0x2D, 0x76, 0x31, 0xA7, 0x3C, 0x91, 0x5E, 0x0B, 0xD4, 0x62, 0xF8 };
+        foreach (var item in Files)
+        {
+            byte[] raw = File.ReadAllBytes(item.ItemSpec);
+            byte[] gz;
+            using (var ms = new MemoryStream())
+            {
+                using (var z = new GZipStream(ms, CompressionMode.Compress, true)) z.Write(raw, 0, raw.Length);
+                gz = ms.ToArray();
+            }
+            for (int i = 0; i < gz.Length; i++) gz[i] ^= key[i % key.Length];
+            File.WriteAllBytes(Path.Combine(OutDir, Path.GetFileNameWithoutExtension(item.ItemSpec) + ".bin"), gz);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="MaskRules" BeforeTargets="CreateManifestResourceNames;AssignTargetPaths">
+    <MaskRules Files="@(RuleJson)" OutDir="$(IntermediateOutputPath)masked\" />
+    <ItemGroup>
+      <MaskedRule Include="$(IntermediateOutputPath)masked\*.bin" />
+      <EmbeddedResource Include="@(MaskedRule)" LogicalName="rules.%(MaskedRule.Filename).bin" />
+    </ItemGroup>
+  </Target>
+</Project>

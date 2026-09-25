@@ -1,0 +1,9 @@
+* text=auto
+# rule packs and the manifest are downloaded byte-for-byte and verified by SHA-256 + RSA signature: never let git change their line endings
+rules/*.json text eol=lf
+version.json text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.ico binary
+*.exe binary

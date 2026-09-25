@@ -1,0 +1,38 @@
+name: Missed detection
+description: A miner or a persistence trick that MineHunter did not report
+title: "[MISS] "
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not attach live malware.** Describe the technique or link a public analysis. `MineHunter-cli.exe scan --full --dump entities.json` produces a research dump of what the scan saw (remove private paths before sharing).
+  - type: input
+    id: family
+    attributes:
+      label: Family / technique name (if known)
+      placeholder: "e.g. a watchdog that re-creates a hidden scheduled task"
+  - type: textarea
+    id: how
+    attributes:
+      label: How does it persist / hide / run?
+      description: Autostart location, file names and folders, command line, scheduled task triggers, WMI, injected process, network endpoints…
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Public source
+      description: Link to a report, blog post or analysis
+  - type: input
+    id: version
+    attributes:
+      label: MineHunter version and rules version
+      placeholder: "1.0.0 / rules 2026.09.25.1"
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What did MineHunter show?
+      description: "Nothing? Only a low-risk note? A verdict that was too low? Paste the relevant lines."

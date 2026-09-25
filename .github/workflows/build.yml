@@ -1,0 +1,36 @@
+name: build
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build the release folder
+        shell: pwsh
+        run: ./build_release.ps1 -Zip
+      - name: Self tests (55 checks, no external network)
+        shell: pwsh
+        run: ./MineHunter-cli.exe selftest
+      - name: Rule pack matches the manifest (SHA-256 of rules/core.json == version.json)
+        shell: pwsh
+        run: |
+          $m = Get-Content version.json -Raw | ConvertFrom-Json
+          $h = (Get-FileHash rules/core.json -Algorithm SHA256).Hash.ToLower()
+          if ($m.rules.sha256 -ne $h) { throw "version.json rules.sha256 ($($m.rules.sha256)) != rules/core.json ($h). Run tools/publish_rules.ps1 and commit version.json." }
+          $v = (Get-Content rules/core.json -Raw | ConvertFrom-Json).version
+          if ($m.rules.version -ne $v) { throw "version.json rules.version ($($m.rules.version)) != rules/core.json version ($v)." }
+          if (-not $m.rules.signature) { throw "version.json has no rules.signature" }
+          "manifest OK: rules $v  $h"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MineHunter
+          path: dist/*.zip

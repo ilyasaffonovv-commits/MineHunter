@@ -1,0 +1,29 @@
+name: release
+on:
+  push:
+    tags: [ 'v*' ]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        shell: pwsh
+        run: ./build_release.ps1 -Zip
+      - name: Self tests
+        shell: pwsh
+        run: ./MineHunter-cli.exe selftest
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = Get-ChildItem dist/MineHunter-v*.zip | Select-Object -First 1
+          $sum = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $zip.Name
+          Set-Content dist/SHA256SUMS-release.txt $sum -Encoding ascii
+          gh release create ${{ github.ref_name }} $zip.FullName dist/SHA256SUMS-release.txt --title "MineHunter ${{ github.ref_name }}" --generate-notes
