@@ -39,7 +39,18 @@ if ($Zip) {
     $dist = Join-Path $root 'dist'; New-Item -ItemType Directory -Force $dist | Out-Null
     $zipPath = Join-Path $dist ("MineHunter-v$ver.zip")
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    $items = 'MineHunter.exe', 'MineHunter.exe.config', 'MineHunter-cli.exe', 'MineHunter-cli.exe.config', 'config.json', 'rules', 'README.md', 'README.en.md', 'LICENSE', 'SHA256SUMS.txt', 'docs' | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
-    Compress-Archive -Path $items -DestinationPath $zipPath -Force
+    $items = 'MineHunter.exe', 'MineHunter.exe.config', 'MineHunter-cli.exe', 'MineHunter-cli.exe.config', 'config.json', 'rules', 'README.md', 'README.ru.md', 'LICENSE', 'SHA256SUMS.txt', 'docs' | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+    # ZipArchive with '/' separators (Windows PowerShell's Compress-Archive writes backslashes, which non-Windows extractors mishandle)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $zs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create)
+    $za = New-Object System.IO.Compression.ZipArchive($zs, [System.IO.Compression.ZipArchiveMode]::Create)
+    foreach ($it in $items) {
+        $files = if ((Get-Item $it).PSIsContainer) { Get-ChildItem $it -Recurse -File } else { Get-Item $it }
+        foreach ($f in $files) {
+            $rel = $f.FullName.Substring($root.Length).Replace([string][char]92, '/').TrimStart('/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($za, $f.FullName, $rel, [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    }
+    $za.Dispose(); $zs.Dispose()
     Write-Host "== zip: $zipPath ($([math]::Round((Get-Item $zipPath).Length/1KB)) KB)"
 }
