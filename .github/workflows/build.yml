@@ -30,7 +30,7 @@ jobs:
           if ($m.rules.version -ne $v) { throw "version.json rules.version ($($m.rules.version)) != rules/core.json version ($v)." }
           if (-not $m.rules.signature) { throw "version.json has no rules.signature" }
           "manifest OK: rules $v  $h"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MineHunter
           path: dist/*.zip
