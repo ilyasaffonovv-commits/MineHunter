@@ -1,4 +1,6 @@
 name: release
+# Publishes a GitHub release when a v* tag is pushed AND no release with that tag exists yet
+# (a maintainer may also create the release by hand with `gh release create`, then this workflow does nothing).
 on:
   push:
     tags: [ 'v*' ]
@@ -8,17 +10,27 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - name: Is there already a release for this tag?
+        id: exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ${{ github.ref_name }} --repo ${{ github.repository }} *> $null
+          "exists=$($LASTEXITCODE -eq 0)".ToLower() | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - uses: actions/setup-dotnet@v6
+        if: steps.exists.outputs.exists != 'true'
         with:
           dotnet-version: '8.0.x'
-      - name: Build
+      - name: Build and self-test
+        if: steps.exists.outputs.exists != 'true'
         shell: pwsh
-        run: ./build_release.ps1 -Zip
-      - name: Self tests
-        shell: pwsh
-        run: ./MineHunter-cli.exe selftest
+        run: |
+          ./build_release.ps1 -Zip
+          ./MineHunter-cli.exe selftest
       - name: Publish the release
+        if: steps.exists.outputs.exists != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

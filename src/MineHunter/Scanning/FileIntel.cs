@@ -172,6 +172,17 @@ namespace MineHunter.Scanning
                 string bad;
                 if (ctx.Rules.BadHashes.TryGetValue(sha, out bad))
                     e.Add(new Evidence("REP.KNOWN_BAD_HASH", EvidenceCategory.Reputation, 100, "SHA-256 is in the known-malware list: " + bad, sha, true));
+                else
+                {
+                    string good;
+                    if (ctx.Rules.GoodHashes.TryGetValue(sha, out good))
+                    {
+                        // a rule update vouches for this exact file (false-positive fix without a new EXE)
+                        e.Trusted = true; e.Set("knownGood", good);
+                        e.Add(new Evidence("TRUST.KNOWN_GOOD_HASH", EvidenceCategory.Trust, -100, "SHA-256 is on the known-legitimate list: " + good, sha));
+                        return;
+                    }
+                }
             }
 
             AddSignatureEvidence(e, ti, tc, pc, isPe);

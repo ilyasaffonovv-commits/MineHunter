@@ -34,6 +34,7 @@ namespace MineHunter
             if (!Ru || e == null) return e == null ? "" : e.Text;
             string ru;
             if (EvRu.TryGetValue(e.RuleId, out ru)) return ru;
+            ru = PackText(e.RuleId); if (ru != null) return ru;
             // rule ids derived from command-line rules: PROC.CMD.x / PERSIST.CMD.x / SCRIPT.CMD.x / WMI.SCRIPT.x
             string id = e.RuleId;
             foreach (var p in new[] { "PROC.", "PERSIST.", "SCRIPT.", "WMI.SCRIPT." })
@@ -41,7 +42,8 @@ namespace MineHunter
                 {
                     string baseId = id.Substring(p.Length); string t;
                     if (!baseId.StartsWith("CMD.")) baseId = "CMD." + baseId;
-                    if (EvRu.TryGetValue(baseId, out t)) return (p == "PERSIST." ? "(автозапуск) " : p == "SCRIPT." ? "(скрипт) " : p == "WMI.SCRIPT." ? "(WMI-скрипт) " : "") + t;
+                    t = PackText(baseId);
+                    if (t != null || EvRu.TryGetValue(baseId, out t)) return (p == "PERSIST." ? "(автозапуск) " : p == "SCRIPT." ? "(скрипт) " : p == "WMI.SCRIPT." ? "(WMI-скрипт) " : "") + t;
                 }
             return e.Text;
         }
@@ -164,7 +166,7 @@ namespace MineHunter
             { "PE.BLOATED", "Файл раздут сотнями МБ одинаковых данных (приём против сканеров и песочниц)" }, { "PE.HUGE_OVERLAY", "Огромный блок данных после программы" },
             { "PE.PACKED", "Файл упакован/защищён упаковщиком" }, { "PE.HIGH_ENTROPY", "Код зашифрован или сжат (высокая энтропия)" },
             { "PE.INJECTOR_IMPORTS", "Использует набор функций для внедрения кода в другие процессы" }, { "PE.DRIVER_USER_PATH", "Драйвер ядра лежит в пользовательской папке" },
-            { "REP.KNOWN_BAD_HASH", "SHA-256 файла есть в списке известного вредоносного ПО" },
+            { "REP.KNOWN_BAD_HASH", "SHA-256 файла есть в списке известного вредоносного ПО" }, { "TRUST.KNOWN_GOOD_HASH", "SHA-256 файла есть в списке заведомо безопасных файлов (обновление правил)" },
             { "PROC.HOLLOW.IMAGE_MISMATCH", "Образ программы в памяти отличается от файла на диске (подмена процесса, hollowing)" }, { "PROC.HOLLOW.NO_MAPPED_FILE", "Основной образ в памяти не связан с файлом на диске" },
             { "PROC.PE_IN_PRIVATE_MEMORY", "Исполняемый образ загружен из «ничейной» памяти — ручная загрузка / внедрение кода" },
             { "PROC.ORPHAN_THREADS", "Есть потоки, стартовавшие с адреса, который не принадлежит ни одной библиотеке" },
@@ -228,8 +230,8 @@ namespace MineHunter
             { "NAME.SVC.DRVSVC", "Имя службы SilentCryptoMiner (выдаёт себя за службу драйвера)" }, { "NAME.MS.UPDATER_FAKE", "Имя похоже на «обновлятор» известного вендора (проверьте, какой файл запускается)" },
             { "NAME.MS.GENERIC", "Общее «виндоусоподобное» имя" }, { "NAME.HOMOGLYPH_TAG", "«Двойник» написания известного вендора" },
             { "IOC.PATH.RUNTIMEHOST_CACHES", "Исполняемый файл в Windows\\Caches\\<8hex> (путь установки кампании 2026 года)" },
-            { "IOC.PATH.PROGRAMDATA_FAKE_VENDOR", "Папка ProgramData из набора майнера/RAT, ранее найденного на этом компьютере" }, { "IOC.PATH.SYSFILES_APPDATA", "Папка AppData с «системным» именем, используемая дропперами майнеров" },
-            { "IOC.TASK.WINDOWSBACKUP_EXTRA", "Неизвестная задача в \\Microsoft\\Windows\\WindowsBackup (использовалась набором майнера, найденным ранее на этом компьютере)" },
+            { "IOC.PATH.PROGRAMDATA_FAKE_VENDOR", "Папка ProgramData из набора майнера/RAT, встречавшегося в прежних кампаниях" }, { "IOC.PATH.SYSFILES_APPDATA", "Папка AppData с «системным» именем, используемая дропперами майнеров" },
+            { "IOC.TASK.WINDOWSBACKUP_EXTRA", "Неизвестная задача в \\Microsoft\\Windows\\WindowsBackup (использовалась набором майнера из прежних кампаний)" },
         };
     }
 }

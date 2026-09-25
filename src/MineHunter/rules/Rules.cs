@@ -12,10 +12,10 @@ namespace MineHunter.Rules
 {
     public sealed class CmdRule
     {
-        public string Id, Category, Text; public Regex Rx; public int Weight; public bool Definitive;
+        public string Id, Category, Text, Version; public Regex Rx; public int Weight; public bool Definitive; public string[] Match = new string[0], NoMatch = new string[0];
     }
-    public sealed class NameRule { public string Id, Text; public Regex Rx; public int Weight; }
-    public sealed class TaskFolderRule { public string Id, Folder, Text; public HashSet<string> Allowed; public int Weight; }
+    public sealed class NameRule { public string Id, Text, Version; public Regex Rx; public int Weight; public string[] Match = new string[0], NoMatch = new string[0]; }
+    public sealed class TaskFolderRule { public string Id, Folder, Text, Version; public HashSet<string> Allowed; public int Weight; }
 
     /// <summary>All detection data. Loaded from embedded defaults + rules folders; lists are unions, so packs only ever add knowledge.</summary>
     public sealed class RulePack
@@ -54,6 +54,11 @@ namespace MineHunter.Rules
         public readonly List<string> BrowserLaunchFlagsRisky = new List<string>();
         public StringScanner BrowserScanner;
         public readonly Dictionary<string, string> BadHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>SHA-256 of well-known legitimate files ("knownGoodHashes" in a pack). Lets a rule update fix a false positive without shipping a new EXE.</summary>
+        public readonly Dictionary<string, string> GoodHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Rule ids switched off by a pack ("disabledRules"): the quickest way to silence a rule that turned out to be noisy.</summary>
+        public readonly HashSet<string> DisabledRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string _packVersion = "0";
 
         public static string InstallDir { get { return AppDomain.CurrentDomain.BaseDirectory; } }
         public static string DataDir
@@ -124,6 +129,7 @@ namespace MineHunter.Rules
             Sources.Add(source);
             string ver = Json.Str(root, "version");
             if (!string.IsNullOrEmpty(ver) && string.CompareOrdinal(ver, Version) > 0) Version = ver;
+            _packVersion = string.IsNullOrEmpty(ver) ? "0" : ver;
 
             var ms = Json.Obj(root.ContainsKey("minerStrings") ? root["minerStrings"] : null);
             if (ms != null)
@@ -138,10 +144,15 @@ namespace MineHunter.Rules
                 {
                     var d = Json.Obj(o); if (d == null) continue;
                     string id = Json.Str(d, "id");
-                    if (CmdRules.Any(c => c.Id == id)) continue;
+                    var have = CmdRules.FirstOrDefault(c => c.Id == id);
+                    if (have != null && string.CompareOrdinal(_packVersion, have.Version ?? "0") < 0) continue;      // an older pack never overrides a newer rule
                     try
                     {
-                        CmdRules.Add(new CmdRule { Id = id, Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Definitive = Json.Bool(d, "definitive"), Category = Json.Str(d, "category", "Content"), Text = Json.Str(d, "text", id) });
+                        var nr = new CmdRule { Id = id, Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Definitive = Json.Bool(d, "definitive"), Category = Json.Str(d, "category", "Content"), Text = Json.Str(d, "text", id) };
+                        Samples(d, out nr.Match, out nr.NoMatch);
+                        if (have != null) CmdRules.Remove(have);
+                        CmdRules.Add(nr);
+                        Loc.RegisterRuleText(id, Json.Str(d, "textRu"));
                     }
                     catch (Exception ex) { Log.Warn("bad regex in rule " + id + ": " + ex.Message); }
                 }
@@ -179,8 +190,13 @@ namespace MineHunter.Rules
                     var d = Json.Obj(o); if (d == null) continue;
                     try
                     {
-                        var nr = new NameRule { Id = Json.Str(d, "id"), Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Text = Json.Str(d, "text") };
-                        (key == "knownIocPaths" ? IocPaths : NameRules).Add(nr);
+                        var nr = new NameRule { Id = Json.Str(d, "id"), Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Text = Json.Str(d, "text") };
+                        Samples(d, out nr.Match, out nr.NoMatch);
+                        var list = key == "knownIocPaths" ? IocPaths : NameRules;
+                        var haveN = list.FirstOrDefault(x => x.Id == nr.Id);
+                        if (haveN != null) { if (string.CompareOrdinal(_packVersion, haveN.Version ?? "0") < 0) continue; list.Remove(haveN); }
+                        list.Add(nr);
+                        Loc.RegisterRuleText(nr.Id, Json.Str(d, "textRu"));
                     }
                     catch { }
                 }
@@ -190,12 +206,19 @@ namespace MineHunter.Rules
                 foreach (var o in tf)
                 {
                     var d = Json.Obj(o); if (d == null) continue;
-                    TaskFolderRules.Add(new TaskFolderRule { Id = Json.Str(d, "id"), Folder = Json.Str(d, "folder"), Weight = Json.Int(d, "weight", 25), Text = Json.Str(d, "text"), Allowed = new HashSet<string>(Json.Strs(d, "allowedNames"), StringComparer.OrdinalIgnoreCase) });
+                    var tr = new TaskFolderRule { Id = Json.Str(d, "id"), Version = _packVersion, Folder = Json.Str(d, "folder"), Weight = Json.Int(d, "weight", 25), Text = Json.Str(d, "text"), Allowed = new HashSet<string>(Json.Strs(d, "allowedNames"), StringComparer.OrdinalIgnoreCase) };
+                    var haveTr = TaskFolderRules.FirstOrDefault(x => x.Id == tr.Id);
+                    if (haveTr != null) { if (string.CompareOrdinal(_packVersion, haveTr.Version ?? "0") < 0) continue; TaskFolderRules.Remove(haveTr); }
+                    TaskFolderRules.Add(tr);
+                    Loc.RegisterRuleText(tr.Id, Json.Str(d, "textRu"));
                 }
             var vd = Json.Obj(root.ContainsKey("vulnerableDrivers") ? root["vulnerableDrivers"] : null);
             if (vd != null) AddAll(VulnerableDrivers, Json.Strs(vd, "names"));
             var bh = Json.Obj(root.ContainsKey("badHashes") ? root["badHashes"] : null);
             if (bh != null) foreach (var kv in bh) BadHashes[kv.Key.ToLowerInvariant()] = Convert.ToString(kv.Value);
+            var gh = Json.Obj(root.ContainsKey("knownGoodHashes") ? root["knownGoodHashes"] : null);
+            if (gh != null) foreach (var kv in gh) if (kv.Key.Length == 64) GoodHashes[kv.Key.ToLowerInvariant()] = Convert.ToString(kv.Value);
+            AddAll(DisabledRules, Json.Strs(root, "disabledRules"));
         }
 
         void LoadHashes(string file)
@@ -215,8 +238,25 @@ namespace MineHunter.Rules
             catch { }
         }
 
-        void Build()
+        /// <summary>Optional "samples": {"match": [...], "noMatch": [...]} on a rule: lines that MUST / MUST NOT trigger it. The self-test enforces them, so a rule
+        /// update cannot silently start flagging benign command lines or stop catching the malicious one it was written for.</summary>
+        static void Samples(Dictionary<string, object> d, out string[] match, out string[] noMatch)
         {
+            match = new string[0]; noMatch = new string[0];
+            var sm = d.ContainsKey("samples") ? Json.Obj(d["samples"]) : null;
+            if (sm == null) return;
+            match = Json.Strs(sm, "match").ToArray(); noMatch = Json.Strs(sm, "noMatch").ToArray();
+        }
+
+        public void Build()
+        {
+            if (DisabledRules.Count > 0)
+            {
+                CmdRules.RemoveAll(r => DisabledRules.Contains(r.Id));
+                NameRules.RemoveAll(r => DisabledRules.Contains(r.Id));
+                IocPaths.RemoveAll(r => DisabledRules.Contains(r.Id));
+                TaskFolderRules.RemoveAll(r => DisabledRules.Contains(r.Id));
+            }
             var pats = new List<string>();
             ScanIndex.Clear();
             foreach (var kv in MinerStrings)

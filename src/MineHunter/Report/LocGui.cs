@@ -11,6 +11,11 @@ namespace MineHunter
     {
         static readonly Dictionary<string, string[]> UiGui = new Dictionary<string, string[]>();
 
+        /// <summary>Russian texts that come with rule packs ("textRu"), so a rule update is bilingual without a new EXE.</summary>
+        static readonly Dictionary<string, string> PackRu = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public static void RegisterRuleText(string id, string ru) { if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(ru)) lock (PackRu) PackRu[id] = ru; }
+        public static string PackText(string id) { string t; lock (PackRu) return id != null && PackRu.TryGetValue(id, out t) ? t : null; }
+
         /// <summary>Inline bilingual string (used by the window code).</summary>
         public static string L(string en, string ru) { return Ru ? ru : en; }
 

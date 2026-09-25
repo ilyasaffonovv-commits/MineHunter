@@ -3,9 +3,9 @@
   "releaseUrl": "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
   "notes": "MineHunter 1.0.0: first release.",
   "rules": {
-    "version": "2026.09.25.1",
+    "version": "2026.09.26.1",
     "url": "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",
-    "sha256": "7ee39f32da3ac00281aaf1705114798ebaab59cc9899cd1fbb56fa8e29349d24",
-    "signature": "OHTWe/9ZQqSQ94+4oeshOJYWPmv2fe2QEoZtfL0XBud1OBC2i4zcBNF4+HBqmnxqqyhOrm4dVxsOxgNkeAhR5oPp77jcUCb0vgaukM699N1UN8V/YzqMAAhYB1kcfEzzSXLgXEA5YsoMHg9NkN9EBmbSab7FQhT1tPiEZlOrYnoejglbKoJ5iI4+hc8nVrSXokris3+nBwX7n7gb0oKmtHoW9DDxP9yLnyOQhf9F4MRJcENrOBw1qCgD5nyuJ9IgewN7TB/xFvQv/xWbx4E/fGz/UCydTUtakfBKTWdkHjVUNDtma0KzBogJnfNay45uNnPx/o10RcvD5ZVS5N0JNMxmzAy0nqvP52DGnNpnzBg25+cPutnN/Zqk7ihDX5n7o0lL0k/DDhDGOES2eldcmS8ar+JvzQmqzIHiW5fpTLbV3MgAWvx1kpOnV62kPtwGB5CmAXCMbFg9tiDu7H0EnCIIWMc9k+6JkWHmh1LB82Yqpe4nNz3hXZ3vGQIdMKBw"
+    "sha256": "61b49967b3c577132a4d56bfe026d4f44d8a4166812a5c058fdb6ea0ef0de971",
+    "signature": "iSDmTUYQzKFW1UsW/DMCEMRZIJpqoSxodKeqTdyEWvHO394VBJ2g2PPl5HgnoGmIvBCMZ1w4mVcoxrQzwHhF4AJ3a73ccQymF2g2M7LHkQm6EIbZX1sd1/anxXdFGhloKwfa8xvg/QNbAonBHbqLIiwzWEMk/P7L5VpSpo9Bcdmm/t66suuyaq96tI2dc7EETty/yB2EVfgsg91JYgY+WcXEaNfZPiB3Uta6tiIKRaJfThLaqJyH+QCUmaHJXP/U7jnQeCW5hIi9ziR7VMPjQ4M9DSodnMvAq+gtrJYi5PiRwdxUuJ60mxTlUK6tm+CDtuqLXUViZ+3QKPzUR9HJA5v+DUk1cwJrapEmiLskXRvFdeoSzXxVm/SNbRXt+/76pP7uYZGV4JB94EqNuxMcLd+VCvvuXIL68KPXx5wudcx/Ff8HJ1n98p8ZEVztIdg9EwL00qImz04lDdbQfqmDgPQzfKDQv+z6fN5VjQVWJEtbNrgFQEg44crzWB4QOaCT"
   }
 }

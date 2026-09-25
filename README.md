@@ -62,7 +62,7 @@ Use `MineHunter-cli.exe` (same program, console subsystem — it waits and write
 | `allow <path>` | mark a file safe (path + SHA-256) |
 | `update-check` / `update-rules` | check the manifest / install verified rules |
 | `markers <file>` | list every miner marker found inside a file (explains "Cryptominer files" findings) |
-| `rules-info` · `selftest` · `--version` | loaded rule packs · 55 built-in self checks · version |
+| `rules-info` · `selftest` · `--version` | loaded rule packs · 60 built-in self checks · version |
 
 Exit codes: `0` clean, `1` suspicious, `2` high-risk/malware, `3` error, `4` confirmation needed (`--yes`).
 
@@ -83,7 +83,7 @@ Needs the .NET SDK only for building; the result runs anywhere on Windows 10/11.
 
 ## Tests & honesty
 
-* `MineHunter-cli.exe selftest` — 55 checks: path classes, rules, signatures, **false-positive calibration**, decision safety, reversible quarantine, registry round-trip, the whole update flow, and "the EXE contains no miner marker".
+* `MineHunter-cli.exe selftest` — 60 checks: path classes, rules, signatures, **false-positive calibration**, decision safety, reversible quarantine, registry round-trip, the whole update flow, and "the EXE contains no miner marker".
 * MinerLab creates harmless look-alikes (system-named files in wrong places, Run keys, hidden tasks, services, WMI, watchdog chains, loopback sockets), MineHunter is measured against them and everything is removed and diffed against a system snapshot afterwards. Results: [docs/TEST_REPORT.md](docs/TEST_REPORT.md). Comparison with MinerSearch: [docs/COMPARISON.md](docs/COMPARISON.md).
 * It is a **heuristic, on-demand** scanner — no kernel driver, no real-time shield. Kernel rootkits and fully encrypted samples with no footprint on disk, in memory or in autostart can be missed. Everything that could not be examined is listed in every report.
 

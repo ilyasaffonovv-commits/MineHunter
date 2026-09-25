@@ -10,14 +10,14 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
       - name: Build the release folder
         shell: pwsh
         run: ./build_release.ps1 -Zip
-      - name: Self tests (55 checks, no external network)
+      - name: Self tests (60 checks, no external network)
         shell: pwsh
         run: ./MineHunter-cli.exe selftest
       - name: Rule pack matches the manifest (SHA-256 of rules/core.json == version.json)
@@ -30,7 +30,7 @@ jobs:
           if ($m.rules.version -ne $v) { throw "version.json rules.version ($($m.rules.version)) != rules/core.json version ($v)." }
           if (-not $m.rules.signature) { throw "version.json has no rules.signature" }
           "manifest OK: rules $v  $h"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MineHunter
           path: dist/*.zip

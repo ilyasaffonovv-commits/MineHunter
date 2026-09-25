@@ -93,6 +93,28 @@ namespace MineHunter
             string self = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
             Check("verification: this build is reported as unsigned (honest)", Trust.Check(self).State == TrustState.Unsigned || Trust.Check(self).IsValid == false);
 
+            w.WriteLine("\nRule-pack semantics (what a rule update can do)");
+            try
+            {
+                string R(string ver, int weight, string extra) { return "{\"version\":\"" + ver + "\",\"cmdlinePatterns\":[{\"id\":\"CMD.TEST.X\",\"regex\":\"zzz-test-token\",\"weight\":" + weight + ",\"category\":\"Persistence\",\"text\":\"t\",\"textRu\":\"тест-ру\"}]" + extra + "}"; }
+                var older = R("2026.01.01.1", 10, ""); var newer = R("2026.02.01.1", 30, ",\"disabledRules\":[\"CMD.TEST.GONE\"],\"knownGoodHashes\":{\"" + new string('a', 64) + "\":\"Example App 1.0\"}");
+                var pk = new RulePack(); pk.Merge(older, "old"); pk.Merge(newer, "new"); pk.Build();
+                var pk2 = new RulePack(); pk2.Merge(newer, "new"); pk2.Merge(older, "old"); pk2.Build();
+                Check("a newer rule pack overrides the same rule id (either load order); an older pack never does", pk.CmdRules.Single(r => r.Id == "CMD.TEST.X").Weight == 30 && pk2.CmdRules.Single(r => r.Id == "CMD.TEST.X").Weight == 30 && pk.Version == "2026.02.01.1");
+                var pk3 = new RulePack(); pk3.Merge(older, "old"); pk3.Merge("{\"version\":\"2026.03.01.1\",\"disabledRules\":[\"CMD.TEST.X\"]}", "kill"); pk3.Build();
+                Check("'disabledRules' switches a noisy rule off without a new EXE", pk3.CmdRules.All(r => r.Id != "CMD.TEST.X"));
+                Check("'knownGoodHashes' are loaded (false-positive fix by data)", pk.GoodHashes.ContainsKey(new string('a', 64)));
+                Check("'textRu' travels with the rule pack (bilingual updates)", Loc.PackText("CMD.TEST.X") == "тест-ру");
+            }
+            catch (Exception ex) { Check("rule-pack semantics", false, ex.Message); }
+
+            {
+                int sampleRules = 0, sampleLines = 0; var bad = new List<string>();
+                foreach (var r in rules.CmdRules) { if (r.Match.Length + r.NoMatch.Length == 0) continue; sampleRules++; foreach (var t in r.Match) { sampleLines++; if (!r.Rx.IsMatch(t)) bad.Add(r.Id + " must match: " + Text.Trunc(t, 50)); } foreach (var t in r.NoMatch) { sampleLines++; if (r.Rx.IsMatch(t)) bad.Add(r.Id + " must NOT match: " + Text.Trunc(t, 50)); } }
+                foreach (var r in rules.IocPaths.Concat(rules.NameRules)) { if (r.Match.Length + r.NoMatch.Length == 0) continue; sampleRules++; foreach (var t in r.Match) { sampleLines++; if (!r.Rx.IsMatch(t.ToLowerInvariant())) bad.Add(r.Id + " must match: " + Text.Trunc(t, 50)); } foreach (var t in r.NoMatch) { sampleLines++; if (r.Rx.IsMatch(t.ToLowerInvariant())) bad.Add(r.Id + " must NOT match: " + Text.Trunc(t, 50)); } }
+                Check("every rule's own samples hold (" + sampleRules + " rules, " + sampleLines + " sample lines: malicious ones match, benign ones do not)", bad.Count == 0 && sampleRules > 0, string.Join("; ", bad.Take(3)));
+            }
+
             w.WriteLine("\nRisk engine calibration (false-positive safety)");
             Check("unsigned + temp + high CPU alone stays Clean/low", V(Ent(EntityKind.File, "a", E("SIG.UNSIGNED", EvidenceCategory.Signature, 6), E("LOC.TEMP", EvidenceCategory.Location, 6), E("BEH.CPU_SUSTAINED", EvidenceCategory.Behavior, 10))) == Verdict.Clean);
             Check("trusted heavy program stays Clean", V(Ent(EntityKind.File, "steam", E("TRUST.OS_SIGNED", EvidenceCategory.Trust, -70)), Ent(EntityKind.Process, "steam.exe")) == Verdict.Clean);

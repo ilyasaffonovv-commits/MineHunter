@@ -53,7 +53,13 @@ out.append('\n## Правила командной строки (`rules/core.jso
 out.append('| Правило | Вес | Определяющее | Категория | Что означает |')
 out.append('|---|---|---|---|---|')
 for c in core.get('cmdlinePatterns', []):
-    out.append('| `%s` | %s | %s | %s | %s |' % (c['id'], c.get('weight'), 'да' if c.get('definitive') else 'нет', c.get('category', 'Content'), (ru.get(c['id']) or c.get('text', '')).replace('|', '\\|')))
-dst = os.path.join(root, 'docs', 'RULES.md')
+    out.append('| `%s` | %s | %s | %s | %s |' % (c['id'], c.get('weight'), 'да' if c.get('definitive') else 'нет', c.get('category', 'Content'), (c.get('textRu') or ru.get(c['id']) or c.get('text', '')).replace('|', '\\|')))
+out.append('\n## Известные пути (IOC, категория Reputation)\n')
+out.append('| Правило | Вес | Что означает |')
+out.append('|---|---|---|')
+for c in core.get('knownIocPaths', []):
+    out.append('| `%s` | %s | %s |' % (c['id'], c.get('weight'), (c.get('textRu') or ru.get(c['id']) or c.get('text', '')).replace('|', '\\|')))
+out.append('\nИмён файлов известных майнеров в наборе: **%d** (`minerFileNames`); доверенных издателей: **%d**; строк-маркеров майнеров: **%d**.' % (len(core.get('minerFileNames', [])), len(core.get('trustedPublishers', [])), sum(len(v) for v in core.get('minerStrings', {}).values())))
+dst =os.path.join(root, 'docs', 'RULES.md')
 open(dst, 'w', encoding='utf-8').write('\n'.join(out) + '\n')
 print('written', dst, sum(len(v) for v in bycat.values()), 'rules')

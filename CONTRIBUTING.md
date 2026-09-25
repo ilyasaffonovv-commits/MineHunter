@@ -13,7 +13,7 @@ Rules live in [`rules/core.json`](rules/core.json) (plain JSON: miner strings, c
 
 1. **A rule needs a source** (public report, sample analysis) in the PR description. Do not paste malware hashes without a verifiable source; a wrong hash is a false positive for someone.
 2. A weak signal (CPU, unsigned, odd folder) must stay weak. New strong signals go into a category, have a cap, and must be corroborated by another category before they can reach *High Risk*.
-3. Add a self-test or a MinerLab scenario when you change detection logic, and run:
+3. Every new rule ships `samples` (`"samples": {"match": [...], "noMatch": [...]}`): command lines that **must** and **must not** trigger it, plus a `textRu` translation. The self-test enforces the samples. Add a self-test or a MinerLab scenario when you change detection logic, and run:
    ```
    powershell -ExecutionPolicy Bypass -File build_release.ps1
    MineHunter-cli.exe selftest

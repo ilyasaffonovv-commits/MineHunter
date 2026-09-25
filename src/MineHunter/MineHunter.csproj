@@ -17,6 +17,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <Version>1.0.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>MineHunter</AssemblyTitle>
     <Product>MineHunter</Product>
     <Description>Local anti-miner and persistence hunter. No telemetry.</Description>
