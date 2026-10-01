@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Scheduled tasks: `ComHandler` actions (a task that runs a registered COM class instead of a command line - fileless persistence with no `Exec` entry to look for) are now parsed. The class id is resolved the way COM itself resolves it, HKCU first then HKLM; a class registered only per-user is flagged (`TASK.COMHANDLER_HKCU`) and, when the registry scanner also found that HKCU registration, the two are merged into one finding.
+- Rule pack 2026.10.01.1: 5 new command-line rules (`CMD.PS.AMSI_BYPASS`, `CMD.UAC.DISABLE`, `CMD.DEFENDER.TASK_DISABLE`, `CMD.MINER.LHR_UNLOCK`, `CMD.RUNDLL32.USERPATH`) and 5 more known vulnerable driver names used in BYOVD attacks (TrueSight, Zemana zam64/zamguard, Dell dbutil_2_3).
+- MinerLab: new scenario S16 (hidden COM-handler task + per-user COM hijack) with matching cleanup.
+
 ## 1.0.0 (2026-09-25)
 
 First public release.
