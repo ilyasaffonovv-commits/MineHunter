@@ -22,7 +22,27 @@ namespace MineHunter.Report
 
     public static class ReportWriter
     {
-        public static string DefaultDir { get { return Path.Combine(RulePack.DataDir, "Reports"); } }
+        static string _reportsDir;
+        /// <summary>Reports have nothing in them that needs protecting (no quarantine, no allow-list, no rules), so they go next to the EXE where
+        /// anyone can find them without hunting through ProgramData. Falls back to the protected data folder if that location is not writable
+        /// (e.g. running from a read-only mount); resolved once per run so a failing write is not retried on every report.</summary>
+        public static string DefaultDir
+        {
+            get
+            {
+                if (_reportsDir != null) return _reportsDir;
+                string portable = Path.Combine(RulePack.InstallDir, "Reports");
+                try
+                {
+                    Directory.CreateDirectory(portable);
+                    string probe = Path.Combine(portable, ".write-test");
+                    File.WriteAllText(probe, "");
+                    File.Delete(probe);
+                    return _reportsDir = portable;
+                }
+                catch { return _reportsDir = Path.Combine(RulePack.DataDir, "Reports"); }
+            }
+        }
 
         static Dictionary<string, object> EvidenceJson(Evidence e)
         {

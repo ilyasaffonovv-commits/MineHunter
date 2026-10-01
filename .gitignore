@@ -16,6 +16,8 @@ keys/
 /MineHunter-cli.exe
 /*.exe.config
 /SHA256SUMS.txt
+# produced by running the built exe from the repo root (Reports now live next to the exe, not in ProgramData)
+/Reports/
 
 # MinerLab: generated on the machine that runs it (paths, pids, hashes) and the harness binary (build_lab.ps1 makes it)
 tests/MinerLab/lab_manifest.json

@@ -31,7 +31,7 @@ namespace MineHunter
         --min suspicious|high|malware     lowest verdict that --fix touches (default: high)
         --only <text>                     with --fix: touch only findings whose files/paths/names contain <text>
         --all-steps                       also run optional steps (default: recommended steps only)
-        --report-dir <dir>                where report.json / report.txt go (default: %ProgramData%\MineHunter\Reports)
+        --report-dir <dir>                where report.json / report.txt go (default: a Reports folder next to this EXE)
         --json <file>                     also copy the JSON report to <file>
         --dump <file>                     research: write every scanned entity with its evidence (JSON)
         --no-browsers  --no-memory  --no-files  --no-cache  --sample-ms <n>  --quiet

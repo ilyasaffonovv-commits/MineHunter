@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reports now go to a `Reports` folder next to `MineHunter.exe` instead of `%ProgramData%\MineHunter\Reports`, so they are easy to find without digging through Windows folders. Quarantine, the allow list and downloaded rules stay in the protected `%ProgramData%\MineHunter` - that protection is what stops a miner running as an ordinary user from un-quarantining itself or planting a fake rule update. Falls back to the old location if the folder next to the EXE is not writable.
+
 - Scheduled tasks: `ComHandler` actions (a task that runs a registered COM class instead of a command line - fileless persistence with no `Exec` entry to look for) are now parsed. The class id is resolved the way COM itself resolves it, HKCU first then HKLM; a class registered only per-user is flagged (`TASK.COMHANDLER_HKCU`) and, when the registry scanner also found that HKCU registration, the two are merged into one finding.
 - Rule pack 2026.10.01.1: 5 new command-line rules (`CMD.PS.AMSI_BYPASS`, `CMD.UAC.DISABLE`, `CMD.DEFENDER.TASK_DISABLE`, `CMD.MINER.LHR_UNLOCK`, `CMD.RUNDLL32.USERPATH`) and 5 more known vulnerable driver names used in BYOVD attacks (TrueSight, Zemana zam64/zamguard, Dell dbutil_2_3).
 - MinerLab: new scenario S16 (hidden COM-handler task + per-user COM hijack) with matching cleanup.

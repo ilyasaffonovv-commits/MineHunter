@@ -12,7 +12,7 @@ MineHunter is a scanner for hidden cryptominers and the persistence mechanisms t
 
 ## Download
 
-Take `MineHunter-v1.0.0.zip` from the [latest release](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest), unzip it into a folder and run `MineHunter.exe`. The SHA-256 of the archive is in the release notes.
+This repository is the source code, which is why the file list above looks bigger than a program usually does — none of it matters if you just want to run MineHunter. Take `MineHunter-v1.0.0.zip` from the [latest release](https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest), unzip it into a folder and run `MineHunter.exe`. The SHA-256 of the archive is in the release notes.
 
 Requirements: Windows 10 or 11 x64 and .NET Framework 4.7.2 or newer, which is already part of current Windows builds. There is no installer. The program asks for administrator rights; without them services, scheduled tasks, WMI and other users' processes cannot be read.
 
@@ -81,13 +81,13 @@ MineHunter-cli.exe rules-info | selftest | --version
 
 Exit codes: 0 clean, 1 suspicious, 2 high risk or malware, 3 error, 4 confirmation needed.
 
-Reports are written to `%ProgramData%\MineHunter\Reports` as `report.json` and `report.txt`.
+Reports are written as `report.json` and `report.txt` to a `Reports` folder next to `MineHunter.exe`, so they are easy to find without digging through Windows folders. Nothing in a report is sensitive (no quarantine content, no settings), only what was found and why.
 
 ## Updates and privacy
 
 The only network request is an HTTPS GET of [`version.json`](version.json) and, when it is newer, [`rules/core.json`](rules/core.json). Nothing about the computer is sent. A rule pack is installed only if its SHA-256 matches the manifest and its RSA signature verifies against the public key built into the program. A new program version is shown as a link to the release page and is not installed automatically. Details are in [docs/UPDATES.md](docs/UPDATES.md).
 
-The data folder `%ProgramData%\MineHunter` (quarantine, allow list, downloaded rules, reports) is writable only by SYSTEM and administrators.
+Everything else the program needs to protect (quarantined files, the allow list, downloaded rule updates) lives in `%ProgramData%\MineHunter`, which only SYSTEM and administrators can write to. This is deliberate: it is what stops a miner running as an ordinary user from marking itself as safe, restoring itself from quarantine, or planting a fake rule update. You will not normally need to open this folder.
 
 ## Build
 
