@@ -38,6 +38,8 @@ namespace MineHunter.Rules
         public readonly HashSet<string> MinerFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<string> SystemBinaries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<string> HollowTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Names of Windows libraries that a program looks for in its own folder first, so a file of that name next to it is loaded instead of the real one (DLL side-loading).</summary>
+        public readonly HashSet<string> SideloadNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<string> NeverExternal = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<string> HeavyApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public readonly HashSet<string> SecurityTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -179,6 +181,7 @@ namespace MineHunter.Rules
             AddAll(MinerConfigKeys, Json.Strs(root, "minerConfigKeys"));
             AddAll(SystemBinaries, Json.Strs(root, "systemBinaries"));
             AddAll(HollowTargets, Json.Strs(root, "hollowTargets"));
+            AddAll(SideloadNames, Json.Strs(root, "sideloadDllNames"));
             AddAll(NeverExternal, Json.Strs(root, "neverExternalNetwork"));
             if (!restricted) AddAll(HeavyApps, Json.Strs(root, "heavyAppNames"));
             AddAll(SecurityTools, Json.Strs(root, "securityTools"));

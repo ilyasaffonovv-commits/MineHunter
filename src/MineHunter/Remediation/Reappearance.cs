@@ -22,6 +22,11 @@ namespace MineHunter.Remediation
 
         public static void Check(ScanContext ctx, ScanResult res)
         {
+            try { CheckCore(ctx, res); } finally { UserHives.ReleaseAll(); }
+        }
+
+        static void CheckCore(ScanContext ctx, ScanResult res)
+        {
             List<QuarantineItem> items;
             try { items = Quarantine.List(); } catch { return; }
             int back = 0;

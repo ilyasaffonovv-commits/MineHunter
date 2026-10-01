@@ -40,6 +40,11 @@ namespace MineHunter.Remediation
             RegistryKey root; string sub = subKey;
             if (hive == "HKLM") root = Registry.LocalMachine;
             else if (hive == "HKCU") root = Registry.CurrentUser;
+            else if (hive != null && hive.StartsWith("HKUOFF\\", StringComparison.OrdinalIgnoreCase))
+            {
+                string err; root = MineHunter.Scanning.UserHives.Acquire(hive, out err);
+                if (root == null) throw new InvalidOperationException("the registry of that user cannot be reached: " + err);
+            }
             else if (hive != null && hive.StartsWith("HKU\\")) { root = Registry.Users; sub = hive.Substring(4) + "\\" + subKey; }
             else throw new ArgumentException("unknown hive " + hive);
             return create ? root.CreateSubKey(sub) : root.OpenSubKey(sub, writable);
@@ -143,7 +148,7 @@ namespace MineHunter.Remediation
                     outcome.Results.Add(r);
                 }
             }
-            finally { ResumeProcesses(frozen); }       // anything still alive but not killed is released again
+            finally { ResumeProcesses(frozen); MineHunter.Scanning.UserHives.ReleaseAll(); }       // anything still alive but not killed is released again; registry files of other users go back
             return outcome;
         }
 
@@ -585,7 +590,7 @@ namespace MineHunter.Remediation
         // ==================================================================================================
         public static string Restore(QuarantineItem it, string alternateFilePath = null)
         {
-            string err = RestoreCore(it, alternateFilePath);
+            string err; try { err = RestoreCore(it, alternateFilePath); } finally { MineHunter.Scanning.UserHives.ReleaseAll(); }
             if (err == null) { try { it.Extra["restoredAt"] = DateTime.Now.ToString("o"); Quarantine.Save(it); } catch { } }      // a deliberate restore never counts as "came back"
             return err;
         }

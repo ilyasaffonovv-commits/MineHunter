@@ -131,6 +131,8 @@
   "browserRiskyPermissions": ["<all_urls>", "webRequestBlocking", "proxy", "nativeMessaging", "debugger", "management", "cookies", "history", "downloads", "clipboardRead", "declarativeNetRequest"],
   "browserLaunchFlagsRisky": ["--load-extension", "--proxy-server", "--proxy-pac-url", "--disable-web-security", "--remote-debugging-port", "--disable-extensions-except", "--no-sandbox", "--disable-site-isolation-trials", "--host-rules"],
 
+  "sideloadDllNames": ["version.dll", "winmm.dll", "winhttp.dll", "wininet.dll", "dwmapi.dll", "cryptsp.dll", "cryptbase.dll", "wtsapi32.dll", "msimg32.dll", "uxtheme.dll", "dbghelp.dll", "iphlpapi.dll", "mpr.dll", "netapi32.dll", "secur32.dll", "userenv.dll", "wldp.dll", "amsi.dll", "bcrypt.dll", "ncrypt.dll", "lpk.dll", "usp10.dll", "shfolder.dll", "dnsapi.dll", "wsock32.dll", "urlmon.dll", "credui.dll", "sspicli.dll", "profapi.dll", "propsys.dll", "oleacc.dll", "cabinet.dll", "mscms.dll", "apphelp.dll", "ntmarta.dll", "dxgi.dll", "d3d9.dll", "d3d11.dll", "dinput8.dll", "opengl32.dll", "xinput1_3.dll", "xinput1_4.dll"],
+
   "toolClasses": [
     {
       "id": "TOOL.GAME_CHEAT",

@@ -26,6 +26,7 @@ namespace MineHunter.Scanning
         public int Parallelism = Math.Max(2, Math.Min(8, Environment.ProcessorCount - 1));
         public int MaxFullScanMinutes = 45;     // hard budget: the full scan stops early rather than taking hours
         public bool IncludeSelf = false;
+        public bool OtherUserHives = true;      // also read the registry of users who are not signed in (their NTUSER.DAT is mounted for a moment)
     }
 
     public sealed class ScanContext

@@ -53,6 +53,25 @@ namespace MineHunter.Scanning
                 if (lolbin && PathUtil.IsUserWritable(p)) userPathArg = true;
             }
 
+            // a signed program started from a user folder is trusted itself, but an unsigned library with the name of a Windows DLL next to it is what it will load: DLL side-loading
+            var sideDlls = new List<Entity>();
+            foreach (var t in targets.Where(x => x.Trusted && PathUtil.IsUserWritable(x.Location) && string.Equals(Path.GetExtension(x.Location), ".exe", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    string dir = Path.GetDirectoryName(t.Location);
+                    foreach (var f in Directory.EnumerateFiles(dir, "*.dll").Take(400))
+                    {
+                        if (!ctx.Rules.SideloadNames.Contains(Path.GetFileName(f))) continue;
+                        var d = ctx.Files.Inspect(f, FileRole.PersistenceTarget);
+                        if (d == null || d.Trusted) continue;
+                        sideDlls.Add(d);
+                        e.Add(new Evidence("PERSIST.SIDELOAD_PAIR", EvidenceCategory.Persistence, 30, mechanism + " starts a signed program from a user folder, and an unsigned library named like a Windows DLL lies next to it: the program loads that file instead of the real one (DLL side-loading)", f));
+                    }
+                }
+                catch { }
+            }
+
             string expandedCmd = command ?? "";
             if (expandedCmd.IndexOf('%') >= 0) { try { expandedCmd = Environment.ExpandEnvironmentVariables(expandedCmd); } catch { } }
             var adsHit = AdsTargetRx.Match(expandedCmd);
@@ -88,6 +107,7 @@ namespace MineHunter.Scanning
             var reg = ctx.GetOrAdd(id, kind, () => e);
             if (!object.ReferenceEquals(reg, e)) { foreach (var ev in e.Evidence) reg.Add(ev); }
             foreach (var t in targets) ctx.Link(reg.Id, t.Id, "launches");
+            foreach (var d in sideDlls) ctx.Link(reg.Id, d.Id, "loads");
             return reg;
         }
     }
@@ -112,19 +132,18 @@ namespace MineHunter.Scanning
                 string hn = hive == Registry.LocalMachine ? "HKLM" : "HKCU";
                 foreach (var k in RunKeys) ScanRunKey(ctx, hive, hn, k);
             }
-            // other users' Run keys (needs the hives to be loaded; loaded ones appear under HKEY_USERS)
+            // other users' Run keys: signed-in users (loaded under HKEY_USERS) and users who are not signed in (their NTUSER.DAT is mounted for a moment)
             try
             {
-                string mySid = null; try { mySid = System.Security.Principal.WindowsIdentity.GetCurrent().User.Value; } catch { }
-                foreach (var sid in Registry.Users.GetSubKeyNames())
+                var hives = UserHives.Enumerate(ctx, ctx.Options.OtherUserHives);
+                foreach (var h in hives)
                 {
-                    if (sid.EndsWith("_Classes") || sid == ".DEFAULT" || sid == "S-1-5-18" || sid == "S-1-5-19" || sid == "S-1-5-20") continue;
-                    if (mySid != null && string.Equals(sid, mySid, StringComparison.OrdinalIgnoreCase)) continue;       // HKCU is this same hive: do not report every entry twice
-                    using (var u = Registry.Users.OpenSubKey(sid))
-                        if (u != null) foreach (var k in RunKeys.Take(5)) ScanRunKey(ctx, u, "HKU\\" + sid, k);
+                    if (h.Label == "HKCU") continue;                               // done above
+                    foreach (var k in RunKeys.Take(5)) ScanRunKey(ctx, h.Root, h.Label, k);
+                    if (!h.Label.StartsWith("HKUOFF\\")) h.Root.Dispose();           // offline mounts are released by the engine when the stage is over
                 }
             }
-            catch (Exception ex) { ctx.AddBlind("Registry", "HKEY_USERS enumeration: " + ex.Message); }
+            catch (Exception ex) { ctx.AddBlind("Registry", "other users' registry: " + ex.Message); }
 
             Winlogon(ctx);
             AppInit(ctx);
@@ -138,7 +157,7 @@ namespace MineHunter.Scanning
             SessionManager(ctx);
         }
 
-        static void ScanRunKey(ScanContext ctx, RegistryKey hive, string hiveName, string sub)
+        internal static void ScanRunKey(ScanContext ctx, RegistryKey hive, string hiveName, string sub)
         {
             try
             {

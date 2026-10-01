@@ -392,7 +392,9 @@ namespace MineHunter.Scanning
 
                 var fi = new FileInfo(p.Path);
                 bool fileChangedSinceStart = p.Start != default(DateTime) && fi.LastWriteTimeUtc > p.Start.AddSeconds(-2);
-                if (fileChangedSinceStart) return;              // updated while running: memory legitimately differs from disk
+                // a program that is updated while it runs legitimately differs from its file: a signed one is believed. An unsigned one is looked at anyway, because
+                // changing the file after the process started is also how a process is made to look like something else (process herpaderping)
+                if (fileChangedSinceStart && (p.Image == null || p.Image.Trusted)) return;
 
                 var head = new byte[0x400]; IntPtr got;
                 if (!NativeMethods.ReadProcessMemory(h, baseAddr, head, (IntPtr)head.Length, out got) || (long)got < 0x200 || head[0] != 'M' || head[1] != 'Z') return;
@@ -410,7 +412,9 @@ namespace MineHunter.Scanning
                 if (disk.SizeOfImage != memSize) diffs.Add("SizeOfImage disk=0x" + disk.SizeOfImage.ToString("X") + " mem=0x" + memSize.ToString("X"));
                 if (disk.EntryPoint != memEntry) diffs.Add("EntryPoint disk=0x" + disk.EntryPoint.ToString("X") + " mem=0x" + memEntry.ToString("X"));
                 if (disk.TimeDateStamp != memTs) diffs.Add("TimeDateStamp disk=0x" + disk.TimeDateStamp.ToString("X") + " mem=0x" + memTs.ToString("X"));
-                if (diffs.Count >= 2)
+                if (diffs.Count >= 2 && fileChangedSinceStart)
+                    p.Entity.Add(new Evidence("PROC.HOLLOW.IMAGE_CHANGED", EvidenceCategory.Behavior, 28, "The file of this unsigned program was changed after it started and no longer matches what runs in memory (a program that is replaced while running, process herpaderping)", string.Join("; ", diffs)));
+                else if (diffs.Count >= 2)
                     p.Entity.Add(new Evidence("PROC.HOLLOW.IMAGE_MISMATCH", EvidenceCategory.Behavior, 62, "The program image in memory is different from the file on disk (process hollowing)", string.Join("; ", diffs), true));
 
                 var mapped = new StringBuilder(1024);

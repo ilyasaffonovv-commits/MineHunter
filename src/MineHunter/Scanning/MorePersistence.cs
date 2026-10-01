@@ -61,27 +61,9 @@ namespace MineHunter.Scanning
 
         public static void Run(ScanContext ctx)
         {
-            var users = new List<KeyValuePair<string, RegistryKey>>();
-            var toClose = new List<RegistryKey>();
-            try
-            {
-                users.Add(new KeyValuePair<string, RegistryKey>("HKCU", Registry.CurrentUser));
-                string mySid = null; try { mySid = System.Security.Principal.WindowsIdentity.GetCurrent().User.Value; } catch { }
-                try
-                {
-                    foreach (var sid in Registry.Users.GetSubKeyNames())
-                    {
-                        if (sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase) || sid == ".DEFAULT" || sid == "S-1-5-18" || sid == "S-1-5-19" || sid == "S-1-5-20") continue;
-                        if (mySid != null && string.Equals(sid, mySid, StringComparison.OrdinalIgnoreCase)) continue;
-                        var k = Registry.Users.OpenSubKey(sid);
-                        if (k == null) continue;
-                        toClose.Add(k); users.Add(new KeyValuePair<string, RegistryKey>("HKU\\" + sid, k));
-                    }
-                }
-                catch (Exception ex) { ctx.AddBlind("Autostart", "HKEY_USERS enumeration: " + ex.Message); }
-                RunOn(ctx, Registry.LocalMachine, users);
-            }
-            finally { foreach (var k in toClose) { try { k.Dispose(); } catch { } } }
+            var hives = UserHives.Enumerate(ctx, ctx.Options.OtherUserHives);
+            try { RunOn(ctx, Registry.LocalMachine, hives.Select(h => new KeyValuePair<string, RegistryKey>(h.Label, h.Root)).ToList()); }
+            finally { foreach (var h in hives) if (h.Label.StartsWith("HKU\\")) { try { h.Root.Dispose(); } catch { } } }       // offline mounts are released by the engine
         }
 
         static void Safe(ScanContext ctx, string what, Action a)

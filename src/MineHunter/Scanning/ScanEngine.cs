@@ -77,7 +77,8 @@ namespace MineHunter.Scanning
                     Task.Run(() => Stage(ctx, "other autostart points", () => ExtraPersistenceScanner.Run(ctx))),
                     Task.Run(() => Stage(ctx, "more registry autostart points", () => MorePersistenceScanner.Run(ctx))),
                 };
-                Task.WaitAll(persistenceTasks.ToArray(), ct);
+                try { Task.WaitAll(persistenceTasks.ToArray(), ct); }
+                finally { UserHives.ReleaseAll(); }          // the registry files of users who are not signed in were mounted only for this stage
                 ctx.Report("System tampering checks...", 60);
                 Stage(ctx, "protection tampering", () => TamperScanner.Run(ctx));
                 ctx.Report("Kernel integrity...", 63);

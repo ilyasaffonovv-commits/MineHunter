@@ -498,6 +498,66 @@ namespace MineHunter
                 Check("only one cleanup runs at a time: a second one is told to wait, and gets the lock when the first is done", lk1 != null && !otherGotIt && lk3 != null);
                 if (lk3 != null) lk3.Dispose();
 
+                // ---- a signed program in a user folder with a Windows-named unsigned DLL beside it
+                string appDir = Path.Combine(tmp, "app"); Directory.CreateDirectory(appDir);
+                string signedExe = Path.Combine(appDir, "notepad.exe"); File.Copy(Path.Combine(PathUtil.System32, "notepad.exe"), signedExe, true);
+                var csl0 = TestCtx(rules);
+                Check("a signed program alone, started from a user folder, is not reported", Persist.Evaluate(csl0, "t:s0", EntityKind.RunKey, "t", "t", "\"" + signedExe + "\"", "Autorun entry") == null);
+                File.WriteAllBytes(Path.Combine(appDir, "helper.dll"), new byte[] { 1, 2, 3 });
+                Check("... nor with an ordinary library beside it", Persist.Evaluate(TestCtx(rules), "t:s1", EntityKind.RunKey, "t", "t", "\"" + signedExe + "\"", "Autorun entry") == null);
+                File.WriteAllBytes(Path.Combine(appDir, "version.dll"), new byte[] { 1, 2, 3 });
+                var csl = TestCtx(rules);
+                var esl = Persist.Evaluate(csl, "t:s2", EntityKind.RunKey, "t", "t", "\"" + signedExe + "\"", "Autorun entry");
+                Check("with an unsigned version.dll beside it, the pair is flagged as DLL side-loading and the library is linked into the finding", HasRule(esl, "PERSIST.SIDELOAD_PAIR") && csl.Links.Any(l => l.Relation == "loads"));
+
+                // ---- the registry file of a user who is not signed in (a saved hive stands in for NTUSER.DAT)
+                // the registry opens the file itself, so it must be in a place that is the same for every process: a redirected %TEMP% (packaged-app processes) is not
+                string offDir = Path.Combine(PathUtil.WinDir, "Temp", "mh_off_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                try { Directory.CreateDirectory(offDir); } catch { offDir = tmp; }
+                string dat = Path.Combine(offDir, "NTUSER.DAT");
+                string offLabel = @"HKUOFF\S-1-5-21-111-222-333-1001";
+                using (var src = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\OffUser"))
+                {
+                    src.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run").SetValue("OffRun", "\"" + payload + "\"");
+                    src.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows").SetValue("Load", payload);
+                }
+                string regOut; int rsave = RemediationEngine.RunTool(Path.Combine(PathUtil.System32, "reg.exe"), "save \"HKCU\\" + fakeRoot + "\\OffUser\" \"" + dat + "\" /y", 20000, out regOut);
+                string mErr = null; RegistryKey offKey = null;
+                if (rsave == 0) { UserHives.TestDat[offLabel] = dat; offKey = UserHives.Mount(offLabel, dat, out mErr); }
+                if (offKey == null) W.WriteLine("  [skip] registry file of another user cannot be mounted here (" + (rsave != 0 ? "reg save: " + regOut : mErr) + "; file " + dat + " exists=" + File.Exists(dat) + " size=" + (File.Exists(dat) ? new FileInfo(dat).Length : -1) + ")");
+                else
+                {
+                    var co = TestCtx(rules);
+                    RegistryPersistenceScanner.ScanRunKey(co, offKey, offLabel, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run");
+                    using (var emptyM = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\EmptyM"))
+                        MorePersistenceScanner.RunOn(co, emptyM, new List<KeyValuePair<string, RegistryKey>> { new KeyValuePair<string, RegistryKey>(offLabel, offKey) });
+                    var eRun = Find(co, e => e.Kind == EntityKind.RunKey && e.Id.Contains("HKUOFF"));
+                    var eLoad = Find(co, e => e.Id.Contains("HKUOFF") && e.Id.Contains(@"Windows\Load"));
+                    Check("a user who is not signed in: the Run key and the Windows Load value in their registry file are found", eRun != null && eLoad != null);
+                    var offFnd = new Finding { Id = "T7", Title = "t", Verdict = Verdict.HighRisk, Entities = new List<Entity> { eRun, eLoad } };
+                    var offSteps = new List<RemediationStep>
+                    {
+                        new RemediationStep { Type = ActionType.RemoveRunValue, EntityId = eRun.Id, Target = eRun.Location, Order = 1, Description = "r" },
+                        new RemediationStep { Type = ActionType.RemoveRegistryValue, EntityId = eLoad.Id, Target = eLoad.Location, Order = 1, Description = "l" }
+                    };
+                    var oOff = RemediationEngine.Execute(co, offFnd, offSteps, null);        // mounts the file again, removes both values, unmounts
+                    Check("... both are removed from that user's registry file (reached again through the stored label)", oOff.Results.All(r => r.Success));
+                    Check("... and nothing stays mounted afterwards", !Registry.Users.GetSubKeyNames().Any(n => n.StartsWith("MineHunter_")));
+                    string mErr2; var mk2 = UserHives.Mount(offLabel, dat, out mErr2);
+                    bool gone = false;
+                    using (var rk = mk2 == null ? null : mk2.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")) gone = rk != null && rk.GetValue("OffRun") == null;
+                    using (var wk = mk2 == null ? null : mk2.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows")) gone = gone && wk != null && wk.GetValue("Load") == null;
+                    UserHives.ReleaseAll();
+                    Check("... the file on disk really changed (read back after a fresh mount)", gone);
+                    foreach (var qi in Quarantine.List().Where(i => i.Type == "RegistryValue" && (i.OriginalPath ?? "").Contains("HKUOFF")).ToList()) RemediationEngine.Restore(qi);
+                    string mErr3; var mk3 = UserHives.Mount(offLabel, dat, out mErr3);
+                    bool back = false;
+                    using (var rk = mk3 == null ? null : mk3.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run")) back = rk != null && Convert.ToString(rk.GetValue("OffRun")) == "\"" + payload + "\"";
+                    UserHives.ReleaseAll();
+                    Check("... and restoring from the quarantine puts the value back into that user's registry file", back);
+                    UserHives.TestDat.Remove(offLabel);
+                }
+
                 // ---- game cheats: graded as Suspicious at most, never removed by default - unless something specific to miners is there as well
                 Check("the rule pack knows the game-cheat class", rules.ToolClasses.Any(t => t.Id == "TOOL.GAME_CHEAT"));
                 string cheatDir = Path.Combine(tmp, "CheatEngine"); Directory.CreateDirectory(cheatDir);
@@ -534,6 +594,7 @@ namespace MineHunter
             finally
             {
                 RulePack.TestDataDirOverride = oldData;
+                try { UserHives.ReleaseAll(); foreach (var d in Directory.GetDirectories(Path.Combine(PathUtil.WinDir, "Temp"), "mh_off_*")) { try { Directory.Delete(d, true); } catch { } } } catch { }
                 try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\MineHunterSelfTest", false); } catch { }
                 try { foreach (var d in Directory.GetDirectories(tmp)) { try { if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) Directory.Delete(d); } catch { } } Directory.Delete(tmp, true); } catch { }
             }
