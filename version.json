@@ -1,7 +1,7 @@
 {
-    "latestVersion":  "1.0.0",
+    "latestVersion":  "1.0.1",
     "releaseUrl":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
-    "notes":  "MineHunter 1.0.0: first release.",
+    "notes":  "MineHunter 1.0.1: reports moved next to the EXE, scheduled-task COM-handler detection, 5 new rules.",
     "rules":  {
                   "version":  "2026.10.01.1",
                   "url":  "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",

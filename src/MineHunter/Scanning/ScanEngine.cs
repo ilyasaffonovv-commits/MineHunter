@@ -16,9 +16,9 @@ namespace MineHunter.Scanning
 {
     public static class AppInfo
     {
-        public const string Version = "1.0.0";
+        public const string Version = "1.0.1";
         /// <summary>Bump when detection logic changes: cached "looked harmless" verdicts of older logic are then discarded.</summary>
-        public const int EngineRevision = 5;
+        public const int EngineRevision = 6;
         public const string Name = "MineHunter";
     }
 

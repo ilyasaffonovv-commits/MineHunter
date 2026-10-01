@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 (2026-10-01)
 
 - Reports now go to a `Reports` folder next to `MineHunter.exe` instead of `%ProgramData%\MineHunter\Reports`, so they are easy to find without digging through Windows folders. Quarantine, the allow list and downloaded rules stay in the protected `%ProgramData%\MineHunter` - that protection is what stops a miner running as an ordinary user from un-quarantining itself or planting a fake rule update. Falls back to the old location if the folder next to the EXE is not writable.
 
