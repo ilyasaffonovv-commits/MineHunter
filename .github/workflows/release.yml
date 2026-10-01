@@ -18,7 +18,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view ${{ github.ref_name }} --repo ${{ github.repository }} *> $null
-          "exists=$($LASTEXITCODE -eq 0)".ToLower() | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $exists = ($LASTEXITCODE -eq 0)
+          $global:LASTEXITCODE = 0   # gh exits 1 when the release does not exist yet - that is the expected, non-error case here
+          "exists=$($exists.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - uses: actions/setup-dotnet@v6
         if: steps.exists.outputs.exists != 'true'
         with:
