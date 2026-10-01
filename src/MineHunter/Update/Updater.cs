@@ -21,6 +21,7 @@ namespace MineHunter.Update
         public bool AutoUpdateRules = true;   // install newer, verified rule packs automatically
         public bool ScanBrowsers = true;
         public bool ScanMemory = true;
+        public bool CreateRestorePoint = true;     // before MineHunter changes anything, ask Windows for a System Restore point (it may decline; the quarantine backup is always made)
         public string Language = "auto";
         /// <summary>RSA public key (XML) used to verify signed rule packs. Empty = packs are verified by SHA-256 only.</summary>
         public string UpdatePublicKeyXml = DefaultPublicKeyXml;
@@ -71,6 +72,7 @@ namespace MineHunter.Update
                     if (d.ContainsKey("autoUpdateRules")) c.AutoUpdateRules = Json.Bool(d, "autoUpdateRules", true);
                     if (d.ContainsKey("scanBrowsers")) c.ScanBrowsers = Json.Bool(d, "scanBrowsers", true);
                     if (d.ContainsKey("scanMemory")) c.ScanMemory = Json.Bool(d, "scanMemory", true);
+                    if (d.ContainsKey("createRestorePoint")) c.CreateRestorePoint = Json.Bool(d, "createRestorePoint", true);
                     if (!string.IsNullOrWhiteSpace(Json.Str(d, "updatePublicKeyXml", ""))) c.UpdatePublicKeyXml = Json.Str(d, "updatePublicKeyXml", "");
                     if (!string.IsNullOrWhiteSpace(Json.Str(d, "gitHubRepo", ""))) c.GitHubRepo = Json.Str(d, "gitHubRepo", "");
                 }
@@ -87,7 +89,7 @@ namespace MineHunter.Update
                 // Only values that differ from the built-in defaults are stored, so a later version that changes a default (new signing key, new repository) is not
                 // silently overridden by an old copy saved here.
                 var d = new Dictionary<string, object>
-                { { "checkUpdatesOnStart", CheckUpdatesOnStart }, { "autoScanOnStart", AutoScanOnStart }, { "autoUpdateRules", AutoUpdateRules }, { "scanBrowsers", ScanBrowsers }, { "scanMemory", ScanMemory }, { "language", Language } };
+                { { "checkUpdatesOnStart", CheckUpdatesOnStart }, { "autoScanOnStart", AutoScanOnStart }, { "autoUpdateRules", AutoUpdateRules }, { "scanBrowsers", ScanBrowsers }, { "scanMemory", ScanMemory }, { "createRestorePoint", CreateRestorePoint }, { "language", Language } };
                 if (UpdateManifestUrl != DefaultManifestUrl) d["updateManifestUrl"] = UpdateManifestUrl ?? "";
                 if (UpdatePublicKeyXml != DefaultPublicKeyXml) d["updatePublicKeyXml"] = UpdatePublicKeyXml ?? "";
                 if (GitHubRepo != DefaultGitHubRepo) d["gitHubRepo"] = GitHubRepo ?? "";

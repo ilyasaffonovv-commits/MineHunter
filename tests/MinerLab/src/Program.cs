@@ -7,6 +7,8 @@
 //   server   : localhost-only TCP echo server (127.0.0.1)
 //   service  : runs as a Windows service that idles and stops itself
 //   idle     : sleeps
+//   memmark  : holds benign marker WORDS in memory (assembled at run time, so neither the file nor the command line contains them) and can write a
+//              clearly labelled config.json next to itself - what a packed miner looks like after it unpacks. Nothing is executed or contacted.
 //
 // Hard safety rules (enforced in code):
 //   * every mode terminates by itself: default 30 s, absolute maximum 60 s
@@ -14,7 +16,7 @@
 //   * sockets are only ever opened to / listened on 127.0.0.1
 //   * a kill-switch file (MinerLab.STOP in %TEMP%\MinerLab or %ProgramData%\MinerLab) ends every mode within 1 s
 //   * launcher refuses to start anything that is not a hash-identical copy of itself
-//   * no network access to anything but loopback, no file writes except its own optional log
+//   * no network access to anything but loopback, no file writes except its own optional log and (memmark --cfg) a labelled config.json in its own folder, removed on exit
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -83,6 +85,10 @@ namespace MinerLab
                     if (port > 0) { var t = new Thread(() => LoopbackClient(port)) { IsBackground = true }; t.Start(); threads.Add(t); }
                     if (o.ContainsKey("child")) StartChild(o["child"], ChildArgs(o));
                     break;
+                case "memmark":
+                    hold = MemMarkers(o.ContainsKey("blob") ? o["blob"] : "full", o.ContainsKey("cfg"));
+                    if (cpu > 0) threads.AddRange(StartCpuLoad(cpu));
+                    break;
                 case "launcher":
                     if (o.ContainsKey("child")) StartChild(o["child"], ChildArgs(o));
                     break;
@@ -96,6 +102,25 @@ namespace MinerLab
             while (!stop) Thread.Sleep(200);
             GC.KeepAlive(hold);
             return 0;
+        }
+
+        // ---- memmark: marker words built at run time (string.Join over separate fragments is not constant-folded by the compiler)
+        static string J(params string[] parts) { return string.Join("", parts); }
+
+        static byte[] MemMarkers(string blob, bool writeConfig)
+        {
+            string proto = J("stra", "tum+tcp://"), alg = J("rand", "omx"), prog = J("xm", "rig"), alg2 = J("crypto", "night"), sub = J("mining.", "subscribe");
+            // "full": protocol + algorithms + program name (what the detector must flag); "few": only two words, like an article or a log that merely mentions mining (must NOT be flagged)
+            string text = blob == "few" ? (prog + " " + alg + " MINERLAB_TEST_MEMORY_FEW")
+                                        : (proto + "127.0.0.1:3333 " + alg + " " + prog + " " + alg2 + " " + sub + " MINERLAB_TEST_MEMORY_MARKERS");
+            if (writeConfig)
+            {
+                string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+                string cfg = "{\"autosave\": true, \"pools\": [{\"url\": \"127.0.0.1:3333\", \"user\": \"MinerLabTestWalletNotReal000000\", \"pass\": \"x\", \"keepalive\": true}], \"algo\": \"" + J("rx", "/0") + "\", \"" + J("donate", "-level") + "\": 1, \"_comment\": \"MinerLabTest benign file\"}";
+                File.WriteAllText(path, cfg);
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => { try { File.Delete(path); } catch { } };
+            }
+            return Encoding.ASCII.GetBytes(text);
         }
 
         // ---- CPU: N threads (one per logical core), each busy `duty` ms out of every 100 ms

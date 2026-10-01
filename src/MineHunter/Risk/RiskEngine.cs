@@ -311,6 +311,7 @@ namespace MineHunter.Risk
                 case EntityKind.Task: return "Scheduled task " + e.P("taskPath");
                 case EntityKind.Service: return "Service " + e.Title;
                 case EntityKind.Driver: return "Driver service " + e.Title;
+                case EntityKind.KernelDriver: return "Loaded kernel driver " + e.Title;
                 case EntityKind.RunKey: return "Autorun " + e.Location;
                 case EntityKind.StartupItem: return "Startup item " + e.Title;
                 case EntityKind.Wmi: return "WMI " + e.Title;
@@ -447,10 +448,14 @@ namespace MineHunter.Risk
                 int pid; if (!int.TryParse(e.P("pid"), out pid)) continue;
                 add(new RemediationStep { Type = ActionType.KillProcess, EntityId = e.Id, Target = pid + "|" + e.P("start"), Order = 2, RecommendedByDefault = defaultOn, Description = "Stop process " + e.Title + " (PID " + pid + ")" });
             }
+            foreach (var e in f.Entities.Where(x => x.Kind == EntityKind.File && !IsProtectedFile(ctx, x) && x.P("missing") == null && x.P("adsStreams") != null))
+                foreach (var sn in e.P("adsStreams").Split('|'))
+                    add(new RemediationStep { Type = ActionType.RemoveStream, EntityId = e.Id, Target = e.Location + "|" + sn, Order = 3, RecommendedByDefault = defaultOn, Description = "Remove the hidden stream \"" + sn + "\" from " + e.Location + " (a copy is kept, restorable)" });
             foreach (var e in f.Entities.Where(x => x.Kind == EntityKind.File && !IsProtectedFile(ctx, x) && x.P("missing") == null))
             {
                 int pos = e.Evidence.Where(v => v.Weight > 0).Sum(v => v.Weight);
                 if (pos < ObservationOrMore) continue;
+                if (e.Evidence.Where(v => v.Weight > 0).All(v => v.RuleId.StartsWith("ADS."))) continue;       // an ordinary file that only carries a hidden stream: only the stream goes
                 add(new RemediationStep { Type = ActionType.QuarantineFile, EntityId = e.Id, Target = e.Location, Order = 3, RecommendedByDefault = defaultOn, Description = "Quarantine file " + e.Location + " (a copy is kept, restorable)" });
             }
             f.Steps = steps.OrderBy(s => s.Order).ToList();

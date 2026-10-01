@@ -57,7 +57,7 @@ namespace MineHunter.Report
                 var oc = outcomes == null ? null : outcomes.FirstOrDefault(o => o.FindingId == f.Id);
                 var d = new Dictionary<string, object>
                 {
-                    { "id", f.Id }, { "title", f.Title }, { "titleLocalized", Loc.Title(f.Title) }, { "verdict", f.Verdict.ToString() }, { "score", f.Score }, { "recommendation", f.Recommendation }, { "whyNotHigher", f.WhyNotHigher },
+                    { "id", f.Id }, { "title", f.Title }, { "titleLocalized", Loc.Title(f.Title) }, { "verdict", f.Verdict.ToString() }, { "severity", Loc.SeverityEn(f.Verdict) }, { "severityLocalized", Loc.Severity(f.Verdict) }, { "score", f.Score }, { "recommendation", f.Recommendation }, { "whyNotHigher", f.WhyNotHigher },
                     { "evidence", f.TopEvidence.Select(EvidenceJson).ToArray() },
                     { "chain", f.ChainLines.ToArray() },
                     { "entities", f.Entities.Select(e => new Dictionary<string, object> { { "id", e.Id }, { "kind", e.Kind.ToString() }, { "title", e.Title }, { "location", e.Location }, { "sha256", e.Sha256 }, { "score", e.Score }, { "trusted", e.Trusted }, { "props", e.Props.Where(p => p.Key != "sections" && p.Key != "imports").ToDictionary(p => p.Key, p => (object)p.Value) }, { "evidence", e.Evidence.Where(x => x.Weight != 0).Select(EvidenceJson).ToArray() } }).ToArray() },
@@ -104,12 +104,13 @@ namespace MineHunter.Report
             sb.AppendLine(line);
             int m = r.Findings.Count(f => f.Verdict == Verdict.Malware), h = r.Findings.Count(f => f.Verdict == Verdict.HighRisk), s = r.Findings.Count(f => f.Verdict == Verdict.Suspicious);
             sb.AppendLine(" " + Loc.T("report.summary") + ":  MALWARE " + m + "   HIGH RISK " + h + "   SUSPICIOUS " + s + "   " + Loc.T("report.notes") + " " + r.Observations.Count);
+            sb.AppendLine(" " + Loc.T("report.severity") + ":  Critical " + m + "   High " + h + "   Medium " + s + "   Low " + r.Observations.Count);
             sb.AppendLine(line);
             if (r.Findings.Count == 0) sb.AppendLine("\n " + Loc.T("report.nothing") + "\n");
             foreach (var f in r.Findings)
             {
                 sb.AppendLine();
-                sb.AppendLine(" [" + f.Verdict.ToString().ToUpperInvariant() + "  score " + f.Score + "]  " + f.Id + "  " + Loc.Title(f.Title));
+                sb.AppendLine(" [" + f.Verdict.ToString().ToUpperInvariant() + "  score " + f.Score + "  " + Loc.Severity(f.Verdict) + "]  " + f.Id + "  " + Loc.Title(f.Title));
                 sb.AppendLine(" " + new string('-', 74));
                 sb.AppendLine("   " + Loc.T("report.why") + ":");
                 foreach (var e in f.TopEvidence) sb.AppendLine("     " + (e.Weight >= 0 ? "+" : "") + e.Weight + "  [" + e.Category + "]  " + Loc.Ev(e) + (string.IsNullOrEmpty(e.Detail) ? "" : "   {" + Text.Trunc(e.Detail, 140) + "}") + (e.Definitive ? "  (definitive)" : ""));
@@ -118,6 +119,12 @@ namespace MineHunter.Report
                 foreach (var c in ThreatGraph.Render(f, true)) sb.AppendLine("     " + c);
                 sb.AppendLine("   " + Loc.T("report.hashes") + ":");
                 foreach (var e in f.Entities.Where(x => !string.IsNullOrEmpty(x.Sha256))) sb.AppendLine("     " + e.Sha256 + "  " + e.Location);
+                var origin = f.Entities.Where(x => x.Kind == EntityKind.File && (x.P("origin") != null || x.P("fileOwner") != null)).Take(6).ToList();
+                if (origin.Count > 0)
+                {
+                    sb.AppendLine("   " + Loc.T("report.origin") + ":");
+                    foreach (var e in origin) sb.AppendLine("     " + System.IO.Path.GetFileName(e.Location) + ": " + (e.P("origin") != null ? Loc.Origin(e.P("origin")) + "; " : "") + (e.P("fileOwner") != null ? Loc.T("report.owner") + " " + e.P("fileOwner") : ""));
+                }
                 sb.AppendLine("   " + Loc.T("report.action") + ": " + Loc.Recommendation(f));
                 foreach (var st in f.Steps) sb.AppendLine("     - " + (st.RecommendedByDefault ? "[recommended] " : "[optional]    ") + st.Description);
                 var oc = outcomes == null ? null : outcomes.FirstOrDefault(o => o.FindingId == f.Id);

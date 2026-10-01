@@ -58,6 +58,8 @@
     {"id": "CMD.RUNDLL32.USERPATH", "regex": "rundll32(\\.exe)?\\s+\"?[^|&;\"]*(\\\\appdata\\\\|\\\\temp\\\\|\\\\programdata\\\\|%temp%|%appdata%|%localappdata%|%programdata%|\\\\users\\\\public\\\\)[^|&;\"]*\\.dll", "weight": 20, "definitive": false, "category": "Persistence", "text": "rundll32 runs a DLL from a user-writable folder", "textRu": "rundll32 запускает DLL из пользовательской папки", "samples": {"match": ["rundll32.exe C:\\Users\\bob\\AppData\\Local\\Temp\\payload.dll,DllMain"], "noMatch": ["rundll32.exe C:\\Windows\\System32\\shell32.dll,Control_RunDLL"]}}
   ],
 
+  "minerConfigKeys": ["algo", "coin", "rig-id", "donate-level", "donate-over-proxy", "max-threads-hint", "huge-pages", "randomx", "cn-heavy", "nicehash", "keepalive", "asm"],
+
   "poolDomainRegex": [
     "(^|\\.)(supportxmr|minexmr|moneroocean|nanopool|2miners|herominers|hashvault|c3pool|f2pool|unmineable|ethermine|flexpool|nicehash|woolypooly|hiveon|kryptex|miningpoolhub|antpool|viabtc|poolin|zpool|prohashing|k1pool|ezil|skypool|monerohash|xmrpool|sparkpool)\\.",
     "(^|\\.)(xmr|monero|randomx|stratum|mining)[a-z0-9-]*\\.(pool|mine)[a-z0-9-]*\\.",

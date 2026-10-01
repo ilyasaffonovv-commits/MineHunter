@@ -7,7 +7,7 @@ namespace MineHunter.Model
     public enum EntityKind
     {
         Process, File, Service, Driver, Task, RunKey, StartupItem, Wmi, DefenderExclusion,
-        FirewallRule, HostsEntry, Network, BrowserExtension, BrowserSetting, PolicyValue, Registry
+        FirewallRule, HostsEntry, Network, BrowserExtension, BrowserSetting, PolicyValue, Registry, KernelDriver
     }
 
     public enum Verdict { Clean = 0, Suspicious = 1, HighRisk = 2, Malware = 3 }
@@ -71,7 +71,7 @@ namespace MineHunter.Model
     {
         KillProcess, SuspendProcess, QuarantineFile, DisableTask, QuarantineTask, StopDisableService, QuarantineService,
         RemoveRunValue, RemoveStartupItem, RemoveWmiSubscription, RemoveDefenderExclusion, RemoveRegistryValue,
-        RestoreDefaultValue, RemoveHostsLines, RemoveFirewallRule, RemoveBrowserExtension, ResetBrowserSetting, ReviewOnly
+        RestoreDefaultValue, RemoveHostsLines, RemoveFirewallRule, RemoveBrowserExtension, ResetBrowserSetting, ReviewOnly, RemoveStream
     }
 
     public sealed class RemediationStep
@@ -127,6 +127,7 @@ namespace MineHunter.Model
         public int ProcessesScanned, ModulesChecked, FilesInspected, FilesHashed, FilesSkippedByCache, PersistenceItems, ServicesScanned,
                    TasksScanned, WmiObjects, RunEntries, BrowserExtensions, Connections, AccessDenied;
         public long BytesRead;
+        public int MemoryScanCandidates; public long MemoryBytesScanned; public int StreamFilesChecked;
         public double Seconds;
     }
 }

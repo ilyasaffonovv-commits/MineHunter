@@ -95,6 +95,7 @@ namespace MineHunter.Scanning
             }
             AnalyzeNetwork(ctx, procs, tcp0, tcp1, dns);
             foreach (var p in procs) AnalyzeLoad(ctx, p);
+            MinerProfile.Run(ctx, procs);
             ctx.Stats.ProcessesScanned = procs.Count;
             return procs;
         }
@@ -526,7 +527,7 @@ namespace MineHunter.Scanning
             bool trusted = p.Image != null && p.Image.Trusted;
             bool heavyName = ctx.Rules.HeavyApps.Contains(Path.GetFileNameWithoutExtension(p.Name ?? ""));
             bool installed = !string.IsNullOrEmpty(p.Path) && (PathUtil.Classify(p.Path) == PathClass.ProgramFiles);
-            if (trusted || (heavyName && installed) || p.Name.Equals("MineHunter.exe", StringComparison.OrdinalIgnoreCase)) return;   // games, compilers, VMs, browsers are allowed to be busy
+            if (trusted || (heavyName && installed) || MinerProfile.IsSelfFamily(ctx, p)) return;   // games, compilers, VMs, browsers are allowed to be busy
             double threshold = ctx.CoreCount <= 4 ? 45 : 22;
             if (p.CpuPercent >= threshold)
                 p.Entity.Add(new Evidence("BEH.CPU_SUSTAINED", EvidenceCategory.Behavior, 12, "Uses " + p.CpuPercent.ToString("0") + "% of the whole CPU while running in the background (measured over " + (ctx.Options.CpuSampleMs / 1000.0).ToString("0.#") + " s)", p.CpuPercent.ToString("0.0") + "%"));

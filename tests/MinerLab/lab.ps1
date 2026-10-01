@@ -117,6 +117,11 @@ switch ($Action) {
     $comAction.ClassId = $comGuid; $comAction.Data = 'MinerLabTest'
     $sch.GetFolder('\').RegisterTaskDefinition('MinerLabTestTaskCom', $taskDef, 6, $null, $null, 3) | Out-Null   # 6=CREATE_OR_UPDATE, 3=TASK_LOGON_INTERACTIVE_TOKEN
     Add-Item 'S16' 'task-com' "HIDDEN task \MinerLabTestTaskCom (COM handler) -> per-user (HKCU) CLSID $comGuid -> LocalAppData harness" 'MinerLabTestTaskCom'
+    # ---------- a miner-style config.json lying around (the file a packed miner reads its pool and wallet from); built from pieces so this script holds no literal miner text
+    New-Item -ItemType Directory -Force "$la\cfg" | Out-Null
+    $cfgJson = '{"autosave": true, "pools": [{"url": "127.0.0.1:3333", "user": "MinerLabTestWalletNotReal000000", "pass": "x", "keepalive": true}], "algo": "' + ('rx' + '/0') + '", "' + ('donate' + '-level') + '": 1, "_comment": "MinerLabTest benign file"}'
+    Set-Content -LiteralPath "$la\cfg\config.json" -Value $cfgJson -Encoding ASCII
+    Add-Item 'S17' 'cfgfile' 'miner-style config.json (pool + wallet + algo) in %LOCALAPPDATA%\MinerLab\cfg, no program next to it' "$la\cfg\config.json"
     # ---------- Startup-folder shortcut
     $ws = New-Object -ComObject WScript.Shell
     $lnk = $ws.CreateShortcut((Join-Path $startup 'MinerLabTest.lnk'))
@@ -140,7 +145,7 @@ switch ($Action) {
     "multi-signal persistence created (Run + task with 5-minute repeating trigger + Startup lnk) for $apm\MinerLabMulti.exe"
 }
 'Start-Dynamic' {
-    $sec = 55
+    $sec = 58
     $cfg = New-Object System.Collections.ArrayList
     function Start-Sim($id, $exe, $argLine, $desc) {
         $p = Start-Process -FilePath $exe -ArgumentList $argLine -WindowStyle Hidden -PassThru
@@ -172,6 +177,13 @@ switch ($Action) {
     $minerish = (@('--algo', 'test-algo', '--url', "${poolScheme}://127.0.0.1:3333", ('--us' + 'er'), 'MinerLabTest', ('--pa' + 'ss'), 'x') -join ' ')
     Copy-Harness "$tmp\cmdline\MinerSimulation.exe" | Out-Null
     Start-Sim 'D8' "$tmp\cmdline\MinerSimulation.exe" "--mode sim --seconds $sec --label MinerLabTest_D8 $minerish" 'miner-like switches in the command line (loopback URL only)' | Out-Null
+    # packed-miner look-alikes: the marker words exist only in the process memory (assembled at run time), never in the file or on the command line
+    Copy-Harness "$la\memfull\MinerSimulation.exe" | Out-Null
+    Start-Sim 'D10' "$la\memfull\MinerSimulation.exe" "--mode memmark --cfg --cpu 30 --seconds $sec --label MinerLabTest_D10" 'memory markers (protocol+algorithms+program) AND a miner-style config.json next to it' | Out-Null
+    Copy-Harness "$la\memonly\MinerSimulation.exe" | Out-Null
+    Start-Sim 'D11' "$la\memonly\MinerSimulation.exe" "--mode memmark --seconds $sec --label MinerLabTest_D11" 'memory markers only (no config file, no load)' | Out-Null
+    Copy-Harness "$la\memfew\MinerSimulation.exe" | Out-Null
+    Start-Sim 'D12' "$la\memfew\MinerSimulation.exe" "--mode memmark --blob few --seconds $sec --label MinerLabTest_D12" 'FALSE-POSITIVE CONTROL: only two marker words in memory (an article / a log that mentions mining)' | Out-Null
     # running masquerades
     Start-Sim 'D9a' "$tmp\masq\svchost.exe"    "--mode sim --seconds $sec --label MinerLabTest_D9a" 'running SYSTEM-LIKE name svchost.exe in %TEMP%' | Out-Null
     Start-Sim 'D9b' "$ap\masq\taskhostw.exe"   "--mode sim --seconds $sec --label MinerLabTest_D9b" 'running SYSTEM-LIKE name taskhostw.exe in %APPDATA%' | Out-Null

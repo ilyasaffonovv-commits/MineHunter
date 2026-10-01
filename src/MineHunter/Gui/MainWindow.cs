@@ -608,7 +608,7 @@ namespace MineHunter.Gui
             DetailScroll.ScrollToTop();
         }
 
-        static int EntityOrder(Entity e) { switch (e.Kind) { case EntityKind.Task: case EntityKind.Service: case EntityKind.RunKey: case EntityKind.StartupItem: case EntityKind.Wmi: case EntityKind.Driver: return 0; case EntityKind.File: return 1; case EntityKind.Process: return 2; default: return 3; } }
+        static int EntityOrder(Entity e) { switch (e.Kind) { case EntityKind.Task: case EntityKind.Service: case EntityKind.RunKey: case EntityKind.StartupItem: case EntityKind.Wmi: case EntityKind.Driver: case EntityKind.KernelDriver: return 0; case EntityKind.File: return 1; case EntityKind.Process: return 2; default: return 3; } }
 
         UIElement ScoreBar(int score, Brush acc)
         {
@@ -695,6 +695,11 @@ namespace MineHunter.Gui
             Task.Run(() =>
             {
                 var outcomes = new List<FindingOutcome>();
+                if (_cfg.CreateRestorePoint)
+                {
+                    Ui(() => ProgText.Text = L("Asking Windows for a restore point…", "Прошу Windows создать точку восстановления…"));
+                    Log.Info("Restore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + plan.Count + " finding(s)"));
+                }
                 foreach (var kv in plan)
                 {
                     Ui(() => ProgText.Text = Loc.Title(kv.Key.Title));

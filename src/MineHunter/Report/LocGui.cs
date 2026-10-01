@@ -142,7 +142,7 @@ namespace MineHunter
                 case EntityKind.Task: return "Задача"; case EntityKind.RunKey: return "Автозапуск"; case EntityKind.StartupItem: return "Автозагрузка"; case EntityKind.Wmi: return "WMI";
                 case EntityKind.DefenderExclusion: return "Исключение Защитника"; case EntityKind.FirewallRule: return "Правило брандмауэра"; case EntityKind.HostsEntry: return "Файл hosts";
                 case EntityKind.Network: return "Сеть"; case EntityKind.BrowserExtension: return "Расширение"; case EntityKind.BrowserSetting: return "Настройка браузера";
-                case EntityKind.PolicyValue: return "Политика"; case EntityKind.Registry: return "Реестр";
+                case EntityKind.PolicyValue: return "Политика"; case EntityKind.Registry: return "Реестр"; case EntityKind.KernelDriver: return "Драйвер ядра";
             }
             return k.ToString();
         }
@@ -180,6 +180,7 @@ namespace MineHunter
                 case EntityKind.Task: return "Задача планировщика " + e.P("taskPath");
                 case EntityKind.Service: return "Служба " + e.Title;
                 case EntityKind.Driver: return "Драйвер " + e.Title;
+                case EntityKind.KernelDriver: return "Загруженный драйвер ядра " + e.Title;
                 case EntityKind.RunKey: return "Автозапуск (реестр) " + e.Location;
                 case EntityKind.StartupItem: return "Элемент автозагрузки " + e.Title;
                 case EntityKind.Wmi: return "WMI " + e.Title;
@@ -190,6 +191,22 @@ namespace MineHunter
         }
 
         static string Short(string s, int n) { if (string.IsNullOrEmpty(s) || s.Length <= n) return s; return s.Substring(0, 20) + "..." + s.Substring(s.Length - (n - 23)); }
+
+        /// <summary>Critical / High / Medium / Low: the same grading as the verdicts (Malware = Critical, High Risk = High, Suspicious = Medium, a low-risk note = Low).</summary>
+        public static string SeverityEn(Verdict v) { return v == Model.Verdict.Malware ? "Critical" : v == Model.Verdict.HighRisk ? "High" : v == Model.Verdict.Suspicious ? "Medium" : "Low"; }
+        public static string Severity(Verdict v)
+        {
+            if (!Ru) return SeverityEn(v);
+            return v == Model.Verdict.Malware ? "Критический" : v == Model.Verdict.HighRisk ? "Высокий" : v == Model.Verdict.Suspicious ? "Средний" : "Низкий";
+        }
+
+        public static string Origin(string o)
+        {
+            if (!Ru || string.IsNullOrEmpty(o)) return o;
+            return o.Replace("Downloaded from the Internet", "Скачан из интернета").Replace("Marked as coming from a restricted site", "Помечен как пришедший с опасного сайта")
+                    .Replace("Marked as coming from a trusted site", "Помечен как пришедший с надёжного сайта").Replace("Marked as coming from the local intranet", "Помечен как пришедший из локальной сети")
+                    .Replace("Has a Mark of the Web (zone", "Есть метка Mark of the Web (зона");
+        }
 
         public static string Progress(string s)
         {

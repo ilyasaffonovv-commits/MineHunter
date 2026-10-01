@@ -31,6 +31,7 @@ namespace MineHunter
         --min suspicious|high|malware     lowest verdict that --fix touches (default: high)
         --only <text>                     with --fix: touch only findings whose files/paths/names contain <text>
         --all-steps                       also run optional steps (default: recommended steps only)
+        --no-restore-point                with --fix: do not ask Windows for a System Restore point first
         --report-dir <dir>                where report.json / report.txt go (default: a Reports folder next to this EXE)
         --json <file>                     also copy the JSON report to <file>
         --dump <file>                     research: write every scanned entity with its evidence (JSON)
@@ -107,8 +108,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                 {
                     O.WriteLine("\nPlanned actions:");
                     foreach (var f in todo) { O.WriteLine("  " + f.Id + " [" + f.Verdict + "] " + Loc.Title(f.Title)); foreach (var s in f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault))) O.WriteLine("     - " + Loc.Step(s)); }
-                    if (!Has(a, "--yes")) { O.WriteLine("\nNothing was changed. Add --yes to execute these actions (every action is reversible from quarantine)."); return 4; }
+                    if (!Has(a, "--yes")) { O.WriteLine("\nNothing was changed. Add --yes to execute these actions (removed files and settings are saved to quarantine and can be restored; a stopped process is not restarted)."); return 4; }
                     outcomes = new List<FindingOutcome>();
+                    if (!Has(a, "--no-restore-point") && cfg.CreateRestorePoint) O.WriteLine("\nRestore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + todo.Count + " finding(s)"));
                     foreach (var f in todo)
                     {
                         O.WriteLine("\nNeutralising " + f.Id + " ...");

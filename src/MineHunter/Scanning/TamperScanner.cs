@@ -232,6 +232,12 @@ namespace MineHunter.Scanning
         }
 
         // -------------------------------------------------------------------------------------------------
+        static readonly HashSet<string> SecurityProgramNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "msmpeng.exe", "mpcmdrun.exe", "nissrv.exe", "mpdefendercoreservice.exe", "smartscreen.exe", "securityhealthservice.exe", "mbam.exe", "mbamservice.exe",
+            "avp.exe", "avastsvc.exe", "avgsvc.exe", "ekrn.exe", "bdagent.exe", "savservice.exe", "sentinelagent.exe", "csfalconservice.exe", "cylancesvc.exe", "hmpalert.exe"
+        };
+
         static void Firewall(ScanContext ctx)
         {
             try
@@ -246,6 +252,16 @@ namespace MineHunter.Scanning
                     string app = null;
                     try { app = (string)r.ApplicationName; } catch { }
                     if (string.IsNullOrWhiteSpace(app) || app.Equals("System", StringComparison.OrdinalIgnoreCase)) continue;
+                    // a BLOCK rule against an antivirus / Defender program: cuts it off from its update and cloud servers
+                    bool block = false, ruleOn = true; try { block = Convert.ToInt32(r.Action) == 0; } catch { } try { ruleOn = (bool)r.Enabled; } catch { }
+                    if (block && ruleOn && SecurityProgramNames.Contains(Path.GetFileName(app)))
+                    {
+                        string bn = null; try { bn = (string)r.Name; } catch { }
+                        var be = ctx.GetOrAdd("fw:block:" + bn + ":" + PathUtil.Key(app), EntityKind.FirewallRule, () => new Entity { Title = "Firewall rule: " + bn, Location = app });
+                        be.Set("ruleName", bn); be.Set("app", app);
+                        be.Add(new Evidence("FW.RULE_BLOCKS_SECURITY", EvidenceCategory.Tamper, 30, "A firewall rule blocks the network access of a security program (" + Path.GetFileName(app) + "): it can no longer update or reach its cloud", app));
+                        continue;
+                    }
                     string np = PathUtil.Normalize(app);
                     if (!PathUtil.IsUserWritable(np) && PathUtil.Classify(np) != PathClass.ProgramData) continue;
                     if (!File.Exists(np)) continue;

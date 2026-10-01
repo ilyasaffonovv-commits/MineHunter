@@ -30,9 +30,10 @@ namespace MineHunter.Scanning
         {
             var res = new ScanResult { Started = DateTime.Now, Mode = opt.Mode.ToString(), AppVersion = AppInfo.Version };
             var sw = Stopwatch.StartNew();
-            // run below normal priority during the scan so the PC stays responsive
+            // The scan drops to below-normal priority once the process stage is done, so the PC stays responsive while files are read. The process stage itself
+            // runs at the normal priority: a miner that keeps every core busy would otherwise starve the scanner until the miner's own work is over.
             ProcessPriorityClass? oldPriority = null;
-            try { var me = Process.GetCurrentProcess(); oldPriority = me.PriorityClass; if (oldPriority == ProcessPriorityClass.Normal) me.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
+            try { oldPriority = Process.GetCurrentProcess().PriorityClass; } catch { }
             try { return RunCore(opt, ct, progress, res, sw); }
             finally { try { if (oldPriority.HasValue) Process.GetCurrentProcess().PriorityClass = oldPriority.Value; } catch { } }
         }
@@ -64,6 +65,7 @@ namespace MineHunter.Scanning
             try
             {
                 Stage(ctx, "processes and loaded libraries", () => ProcessScanner.Run(ctx));
+                try { var me = Process.GetCurrentProcess(); if (me.PriorityClass == ProcessPriorityClass.Normal) me.PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
                 ctx.Report("Autostart locations...", 50);
                 var persistenceTasks = new List<Task>
                 {
@@ -72,21 +74,27 @@ namespace MineHunter.Scanning
                     Task.Run(() => Stage(ctx, "services and drivers", () => ServiceScanner.Run(ctx))),
                     Task.Run(() => Stage(ctx, "scheduled tasks", () => TaskScanner.Run(ctx))),
                     Task.Run(() => Stage(ctx, "WMI subscriptions", () => WmiScanner.Run(ctx))),
+                    Task.Run(() => Stage(ctx, "other autostart points", () => ExtraPersistenceScanner.Run(ctx))),
                 };
                 Task.WaitAll(persistenceTasks.ToArray(), ct);
                 ctx.Report("System tampering checks...", 60);
                 Stage(ctx, "protection tampering", () => TamperScanner.Run(ctx));
+                ctx.Report("Kernel integrity...", 63);
+                Stage(ctx, "kernel integrity", () => IntegrityScanner.Run(ctx));
                 if (opt.Browsers) { ctx.Report("Browsers and extensions...", 66); Stage(ctx, "browsers", () => BrowserScanner.Run(ctx)); }
                 if (opt.ScanHotDirs || opt.Mode != ScanMode.Quick) { ctx.Report("Files...", 70); Stage(ctx, "files", () => FileSystemScanner.Run(ctx)); }
+                if (opt.Mode != ScanMode.Custom) { ctx.Report("Alternate data streams...", 92); Stage(ctx, "alternate data streams", () => AdsScanner.Run(ctx)); }
                 ctx.Report("Analysing evidence...", 96);
             }
             catch (OperationCanceledException) { res.Aborted = true; res.AbortReason = "cancelled by user"; }
             catch (AggregateException ae) when (ae.InnerExceptions.Any(x => x is OperationCanceledException)) { res.Aborted = true; res.AbortReason = "cancelled by user"; }
 
+            try { MineHunter.Remediation.Reappearance.Check(ctx, res); } catch (Exception ex) { Log.Warn("reappearance check: " + ex.Message); }
             List<Entity> observations;
             var findings = RiskEngine.Build(ctx, out observations);
             res.Findings = findings;
             res.Observations = observations;
+            try { Provenance.Enrich(findings.SelectMany(f => f.Entities).Concat(observations)); } catch (Exception ex) { Log.Warn("provenance: " + ex.Message); }
             res.EntitiesTotal = ctx.Entities.Count;
             res.Stats = ctx.Stats;
             res.BlindSpots = ctx.Blind.ToList();
@@ -172,8 +180,10 @@ namespace MineHunter.Scanning
                     var sid = (System.Security.Principal.SecurityIdentifier)r.IdentityReference;
                     bool broad = sid.IsWellKnown(System.Security.Principal.WellKnownSidType.WorldSid) || sid.IsWellKnown(System.Security.Principal.WellKnownSidType.BuiltinUsersSid) || sid.IsWellKnown(System.Security.Principal.WellKnownSidType.AuthenticatedUserSid);
                     if (!broad) continue;
-                    var w = System.Security.AccessControl.FileSystemRights.WriteData | System.Security.AccessControl.FileSystemRights.AppendData | System.Security.AccessControl.FileSystemRights.Modify
-                          | System.Security.AccessControl.FileSystemRights.FullControl | System.Security.AccessControl.FileSystemRights.DeleteSubdirectoriesAndFiles | System.Security.AccessControl.FileSystemRights.Delete;
+                    // single rights only: the composite ones (Modify, FullControl) contain the read rights and would match a read-only entry
+                    var w = System.Security.AccessControl.FileSystemRights.WriteData | System.Security.AccessControl.FileSystemRights.AppendData | System.Security.AccessControl.FileSystemRights.WriteExtendedAttributes
+                          | System.Security.AccessControl.FileSystemRights.DeleteSubdirectoriesAndFiles | System.Security.AccessControl.FileSystemRights.WriteAttributes | System.Security.AccessControl.FileSystemRights.Delete
+                          | System.Security.AccessControl.FileSystemRights.ChangePermissions | System.Security.AccessControl.FileSystemRights.TakeOwnership;
                     if ((r.FileSystemRights & w) != 0)
                         return "The data folder " + RulePack.DataDir + " (quarantine, allow-list, rule updates) can be written by ordinary users, so a program running without administrator rights could tamper with it. Run MineHunter as administrator once: it closes the folder again.";
                 }

@@ -116,7 +116,21 @@ namespace MineHunter.Scanning
             }
             bool isPe = pe != null;
             e.Set("isPe", isPe ? "1" : "0");
-            if (!isPe && !nameScript) return;                       // not executable content: nothing to judge
+            if (!isPe && !nameScript)
+            {
+                // not executable content, except a miner's configuration file (pool + wallet): packed miners keep nothing else to recognise them by
+                if (ArchiveNames.Wanted(path, fi.Length))
+                {
+                    int aw; string hit = ArchiveNames.Find(ctx, path, out aw);
+                    if (hit != null) e.Add(new Evidence("ARCHIVE.MINER_NAME", EvidenceCategory.Content, aw, "An archive holds a file that looks like a miner: " + hit, path));
+                }
+                if (MinerConfigAnalyzer.IsCandidateName(path) && !ctx.IsSelf(path))
+                {
+                    var cr = MinerConfigAnalyzer.Analyze(ctx, path);
+                    if (cr != null) e.Add(new Evidence(cr.RuleId, EvidenceCategory.Content, cr.Weight, cr.Text, cr.Detail, cr.Definitive));
+                }
+                return;
+            }
 
             // ---------- attributes / naming tricks (apply to anything executable, before any trust shortcut)
             if (nameLower.IndexOf('\u202e') >= 0 || path.IndexOf('\u202e') >= 0)

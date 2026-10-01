@@ -108,7 +108,7 @@ namespace MineHunter.Scanning
                 if (!Directory.Exists(root.Path)) continue;
                 if (sw.Elapsed > budget) { budgetHit = true; break; }
                 ctx.Report("Files: " + root.Path, 70 + (int)(25.0 * idx / Math.Max(1, total)));
-                var files = Fs.EnumerateFiles(root.Path, d => (!root.SkipStd || !SkipDirNames.Contains(Path.GetFileName(d))) && !doneRoots.Contains(d.TrimEnd(Path.DirectorySeparatorChar)), f => root.FileFilter(f, 0), root.Depth, d => ctx.Denied("Files", d));
+                var files = Fs.EnumerateFiles(root.Path, d => (!root.SkipStd || !SkipDirNames.Contains(Path.GetFileName(d))) && !doneRoots.Contains(d.TrimEnd(Path.DirectorySeparatorChar)), f => root.FileFilter(f, 0) || MinerConfigAnalyzer.IsCandidateName(f) || (f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && PathUtil.IsUserWritable(f)), root.Depth, d => ctx.Denied("Files", d));
                 var part = Partitioner.Create(files, EnumerablePartitionerOptions.NoBuffering);
                 try
                 {

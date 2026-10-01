@@ -671,7 +671,7 @@ namespace MineHunter.Scanning
 
         static string Txt(XElement e, string name) { var x = e == null ? null : e.Element(Ns + name); return x == null ? null : x.Value; }
 
-        static void One(ScanContext ctx, string file, string taskPath)
+        internal static void One(ScanContext ctx, string file, string taskPath)
         {
             XDocument doc;
             try { doc = XDocument.Load(file); } catch { return; }
@@ -692,10 +692,13 @@ namespace MineHunter.Scanning
 
             var repeat = new List<TimeSpan>();
             var trigTypes = new List<string>();
+            var sessionStates = new List<string>();
+            bool idleOnly = string.Equals(Txt(settings, "RunOnlyIfIdle"), "true", StringComparison.OrdinalIgnoreCase);
             if (triggers != null)
                 foreach (var t in triggers.Elements())
                 {
                     trigTypes.Add(t.Name.LocalName);
+                    if (t.Name.LocalName == "SessionStateChangeTrigger") { string sc = Txt(t, "StateChange"); if (!string.IsNullOrEmpty(sc)) sessionStates.Add(sc); }
                     var rep = t.Element(Ns + "Repetition");
                     string iv = Txt(rep, "Interval");
                     if (!string.IsNullOrEmpty(iv)) { try { repeat.Add(System.Xml.XmlConvert.ToTimeSpan(iv)); } catch { } }
@@ -720,6 +723,10 @@ namespace MineHunter.Scanning
                     if (hidden) ev.Add(new Evidence("TASK.HIDDEN", EvidenceCategory.Persistence, 8, "Hidden task (not shown in Task Scheduler by default)", taskPath));
                     if (string.Equals(runLevel, "HighestAvailable", StringComparison.OrdinalIgnoreCase)) ev.Add(new Evidence("TASK.HIGHEST", EvidenceCategory.Persistence, 8, "Runs with the highest privileges from a user-writable folder", taskPath));
                     if (repeat.Any(r => r > TimeSpan.Zero && r <= TimeSpan.FromMinutes(10))) ev.Add(new Evidence("TASK.REPEAT_SHORT", EvidenceCategory.Persistence, 8, "Re-runs every few minutes (respawn / watchdog pattern)", string.Join(",", repeat.Select(r => r.TotalMinutes + "min"))));
+                    if (trigTypes.Contains("IdleTrigger") || idleOnly)
+                        ev.Add(new Evidence("TASK.IDLE_TRIGGER", EvidenceCategory.Persistence, 10, "Starts only when the computer is idle - the moment a miner can use all of it without the owner noticing", taskPath));
+                    if (sessionStates.Any(s => s.IndexOf("Lock", StringComparison.OrdinalIgnoreCase) >= 0 || s.IndexOf("Disconnect", StringComparison.OrdinalIgnoreCase) >= 0))
+                        ev.Add(new Evidence("TASK.LOCK_TRIGGER", EvidenceCategory.Persistence, 8, "Starts when the screen is locked or the session is disconnected (nobody is watching)", string.Join(",", sessionStates)));
                     if (trigTypes.Distinct().Count() >= 2) ev.Add(new Evidence("TASK.MULTI_TRIGGER", EvidenceCategory.Persistence, 3, "Several different triggers (boot + logon + timer)", string.Join(",", trigTypes)));
                 }
             };
@@ -772,7 +779,7 @@ namespace MineHunter.Scanning
         /// <summary>Resolves a COM class id to its implementation path, the way COM itself does: per-user registration (HKCU) first, then the
         /// machine-wide one (HKLM, including the 32-bit view) - the exact precedence a real process would use, which is also what makes an
         /// HKCU-only registration able to silently replace a machine-wide COM handler.</summary>
-        static string ResolveComClass(string clsid, out string hive, out string srv)
+        internal static string ResolveComClass(string clsid, out string hive, out string srv)
         {
             hive = null; srv = null;
             foreach (var s in new[] { "InprocServer32", "LocalServer32" })

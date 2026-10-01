@@ -26,6 +26,9 @@ namespace MineHunter.Rules
         // miner strings by group
         public readonly Dictionary<string, List<string>> MinerStrings = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         public StringScanner MinerScanner;
+        /// <summary>Option names that appear in a miner's configuration file (kept in the rule pack so the EXE itself holds no miner words).</summary>
+        public readonly List<string> MinerConfigKeys = new List<string>();
+        public Regex MiningKeysRx;
         public List<KeyValuePair<string, string>> ScanIndex = new List<KeyValuePair<string, string>>();   // pattern id -> (group, text)
 
         public readonly List<CmdRule> CmdRules = new List<CmdRule>();
@@ -170,6 +173,7 @@ namespace MineHunter.Rules
             var ports = Json.Arr(root.ContainsKey("miningPorts") ? root["miningPorts"] : null);
             if (ports != null) foreach (var p in ports) MiningPorts.Add(Convert.ToInt32(p));
             AddAll(MinerFileNames, Json.Strs(root, "minerFileNames"));
+            AddAll(MinerConfigKeys, Json.Strs(root, "minerConfigKeys"));
             AddAll(SystemBinaries, Json.Strs(root, "systemBinaries"));
             AddAll(HollowTargets, Json.Strs(root, "hollowTargets"));
             AddAll(NeverExternal, Json.Strs(root, "neverExternalNetwork"));
@@ -229,8 +233,16 @@ namespace MineHunter.Rules
             var gh = restricted ? null : Json.Obj(root.ContainsKey("knownGoodHashes") ? root["knownGoodHashes"] : null);
             if (gh != null) foreach (var kv in gh) if (kv.Key.Length == 64) GoodHashes[kv.Key.ToLowerInvariant()] = Convert.ToString(kv.Value);
             if (!restricted) AddAll(DisabledRules, Json.Strs(root, "disabledRules"));
-            else if (root.ContainsKey("disabledRules") || root.ContainsKey("knownGoodHashes") || root.ContainsKey("trustedPublishers") || root.ContainsKey("heavyAppNames"))
-                Log.Warn("rule pack " + source + " is next to the EXE (not signed, not protected): its trust/disable fields were ignored, only added detections were used");
+            else
+            {
+                // the released rules\core.json carries the same trust lists as the embedded pack: only say something when ignoring them actually changes anything
+                bool dropped = Json.Strs(root, "disabledRules").Any()
+                    || Json.Strs(root, "trustedPublishers").Any(x => !TrustedPublishers.Contains(x))
+                    || Json.Strs(root, "heavyAppNames").Any(x => !HeavyApps.Contains(x))
+                    || Json.Strs(root, "securityToolsBenign").Any(x => !SecurityToolsBenign.Contains(x))
+                    || (root.ContainsKey("knownGoodHashes") && Json.Obj(root["knownGoodHashes"]) != null && Json.Obj(root["knownGoodHashes"]).Count > 0);
+                if (dropped) Log.Warn("rule pack " + source + " is next to the EXE (not signed, not protected): its trust/disable fields were ignored, only added detections were used");
+            }
         }
 
         void LoadHashes(string file)
@@ -269,6 +281,7 @@ namespace MineHunter.Rules
                 IocPaths.RemoveAll(r => DisabledRules.Contains(r.Id));
                 TaskFolderRules.RemoveAll(r => DisabledRules.Contains(r.Id));
             }
+            if (MinerConfigKeys.Count > 0) MiningKeysRx = Rx("\"(" + string.Join("|", MinerConfigKeys.Select(Regex.Escape)) + ")\"\\s*:");
             var pats = new List<string>();
             ScanIndex.Clear();
             foreach (var kv in MinerStrings)

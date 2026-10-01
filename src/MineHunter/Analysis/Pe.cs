@@ -358,7 +358,8 @@ namespace MineHunter.Analysis
             return hits;
         }
 
-        int Feed(byte[] buf, int count, int state, Dictionary<int, int> hits)
+        /// <summary>Feeds one more chunk of a longer stream (state carries over from the previous call; start with 0).</summary>
+        public int Feed(byte[] buf, int count, int state, Dictionary<int, int> hits)
         {
             for (int i = 0; i < count; i++)
             {

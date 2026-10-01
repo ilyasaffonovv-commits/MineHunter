@@ -187,6 +187,7 @@ namespace MineHunter.Remediation
                 case ActionType.RemoveHostsLines: RemoveHosts(f, s, e, r); break;
                 case ActionType.RemoveFirewallRule: RemoveFirewall(f, s, e, r); break;
                 case ActionType.RemoveBrowserExtension: RemoveExtension(f, s, e, r); break;
+                case ActionType.RemoveStream: RemoveStream(f, s, e, r); break;
                 default: r.Success = false; r.Message = "not supported"; break;
             }
         }
@@ -208,6 +209,23 @@ namespace MineHunter.Remediation
                 r.Success = true;
             }
             catch (Exception ex) { r.Success = !SameProcess(pid, start); r.Message = r.Success ? "already gone" : ex.Message; }
+        }
+
+        // ------------------------------------------------------------------------------------------ alternate data streams
+        static void RemoveStream(Finding f, RemediationStep s, Entity e, StepResult r)
+        {
+            int bar = (s.Target ?? "").LastIndexOf('|');
+            if (bar <= 0) { r.Message = "bad target"; return; }
+            string path = s.Target.Substring(0, bar), stream = s.Target.Substring(bar + 1), full = path + ":" + stream;
+            if (!File.Exists(path)) { r.Success = true; r.Message = "already gone"; return; }
+            if (e != null && Decision.IsProtectedFile(null, e)) { r.Message = "trusted/system file - refused"; return; }
+            byte[] data = AdsScanner.ReadAll(path, stream);
+            if (data == null) { r.Message = "could not read the stream (missing, locked or larger than 256 MB), it was left untouched"; return; }
+            var it = Quarantine.StoreBytes("Stream", full, full, data, f.Title, "alternate data stream", new Dictionary<string, object> { { "host", path }, { "stream", stream } });
+            r.QuarantineId = it.Id;
+            if (!AdsScanner.Delete(path, stream)) { r.Message = "could not delete the stream"; return; }
+            bool gone = !AdsScanner.Streams(path).Any(x => string.Equals(x.Name, stream, StringComparison.OrdinalIgnoreCase));
+            r.Success = gone; r.Message = gone ? "stream removed (saved as quarantine item " + it.Id + ")" : "the stream is still there";
         }
 
         // ------------------------------------------------------------------------------------------ files
@@ -488,6 +506,13 @@ namespace MineHunter.Remediation
         // ==================================================================================================
         public static string Restore(QuarantineItem it, string alternateFilePath = null)
         {
+            string err = RestoreCore(it, alternateFilePath);
+            if (err == null) { try { it.Extra["restoredAt"] = DateTime.Now.ToString("o"); Quarantine.Save(it); } catch { } }      // a deliberate restore never counts as "came back"
+            return err;
+        }
+
+        static string RestoreCore(QuarantineItem it, string alternateFilePath)
+        {
             try
             {
                 switch (it.Type)
@@ -553,6 +578,12 @@ namespace MineHunter.Remediation
                             string tmp = Path.Combine(Path.GetTempPath(), "mh_ext_" + Guid.NewGuid().ToString("N") + ".zip");
                             try { File.WriteAllBytes(tmp, Quarantine.ReadPayload(it)); ZipFile.ExtractToDirectory(tmp, dir); return null; }
                             finally { try { File.Delete(tmp); } catch { } }
+                        }
+                    case "Stream":
+                        {
+                            string host = Convert.ToString(it.Extra["host"]), stream = Convert.ToString(it.Extra["stream"]);
+                            if (!File.Exists(host)) return "the file that carried the stream no longer exists (" + host + ")";
+                            return AdsScanner.Write(host, stream, Quarantine.ReadPayload(it)) ? null : "the stream could not be written back (is the volume NTFS?)";
                         }
                     case "Wmi":
                         return RestoreWmi(it);
