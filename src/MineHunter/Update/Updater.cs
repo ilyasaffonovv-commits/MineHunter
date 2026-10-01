@@ -35,22 +35,42 @@ namespace MineHunter.Update
         public static string InstallConfig { get { return Path.Combine(RulePack.InstallDir, "config.json"); } }
         public static string UserConfig { get { return Path.Combine(RulePack.DataDir, "config.json"); } }
 
-        public static AppConfig Load()
+        public static AppConfig Load() { return Load(InstallConfig, UserConfig); }
+
+        internal static AppConfig Load(string installConfig, string userConfig)
         {
             var c = new AppConfig();
-            foreach (var f in new[] { InstallConfig, UserConfig })
+            // config.json next to the EXE is writable by whatever can write to the folder the program was unpacked into, so it may only carry
+            // harmless interface preferences. Anything that decides what gets scanned or whom to trust for updates (update address and signing
+            // key, memory/browser scanning, rule updates) is read only from the protected data folder.
+            bool first = true;
+            foreach (var f in new[] { installConfig, userConfig })
             {
+                bool protectedFile = !first; first = false;
                 try
                 {
                     if (!File.Exists(f)) continue;
                     var d = Json.Obj(Json.Parse(File.ReadAllText(f)));
+                    if (d.ContainsKey("autoScanOnStart")) c.AutoScanOnStart = Json.Bool(d, "autoScanOnStart", true);
+                    if (d.ContainsKey("language")) c.Language = Json.Str(d, "language", "auto");
+                    if (!protectedFile)
+                    {
+                        if (d.ContainsKey("updateManifestUrl") || d.ContainsKey("updatePublicKeyXml") || d.ContainsKey("gitHubRepo") || d.ContainsKey("scanMemory") || d.ContainsKey("scanBrowsers") || d.ContainsKey("autoUpdateRules") || d.ContainsKey("checkUpdatesOnStart"))
+                        {
+                            // values equal to the built-in defaults are harmless (the released config.json carries them): warn only when something differs
+                            bool differs = (d.ContainsKey("updateManifestUrl") && Json.Str(d, "updateManifestUrl", "") != DefaultManifestUrl) || (d.ContainsKey("updatePublicKeyXml") && !string.IsNullOrWhiteSpace(Json.Str(d, "updatePublicKeyXml", "")) && Json.Str(d, "updatePublicKeyXml", "") != DefaultPublicKeyXml)
+                                || (d.ContainsKey("gitHubRepo") && !string.IsNullOrWhiteSpace(Json.Str(d, "gitHubRepo", "")) && Json.Str(d, "gitHubRepo", "") != DefaultGitHubRepo)
+                                || (d.ContainsKey("scanMemory") && !Json.Bool(d, "scanMemory", true)) || (d.ContainsKey("scanBrowsers") && !Json.Bool(d, "scanBrowsers", true))
+                                || (d.ContainsKey("autoUpdateRules") && !Json.Bool(d, "autoUpdateRules", true)) || (d.ContainsKey("checkUpdatesOnStart") && !Json.Bool(d, "checkUpdatesOnStart", true));
+                            if (differs) Log.Warn("config.json next to the EXE tries to change update/scan settings: ignored (those settings are only read from " + userConfig + ")");
+                        }
+                        continue;
+                    }
                     if (d.ContainsKey("updateManifestUrl")) c.UpdateManifestUrl = Json.Str(d, "updateManifestUrl", c.UpdateManifestUrl);
                     if (d.ContainsKey("checkUpdatesOnStart")) c.CheckUpdatesOnStart = Json.Bool(d, "checkUpdatesOnStart", true);
-                    if (d.ContainsKey("autoScanOnStart")) c.AutoScanOnStart = Json.Bool(d, "autoScanOnStart", true);
                     if (d.ContainsKey("autoUpdateRules")) c.AutoUpdateRules = Json.Bool(d, "autoUpdateRules", true);
                     if (d.ContainsKey("scanBrowsers")) c.ScanBrowsers = Json.Bool(d, "scanBrowsers", true);
                     if (d.ContainsKey("scanMemory")) c.ScanMemory = Json.Bool(d, "scanMemory", true);
-                    if (d.ContainsKey("language")) c.Language = Json.Str(d, "language", "auto");
                     if (!string.IsNullOrWhiteSpace(Json.Str(d, "updatePublicKeyXml", ""))) c.UpdatePublicKeyXml = Json.Str(d, "updatePublicKeyXml", "");
                     if (!string.IsNullOrWhiteSpace(Json.Str(d, "gitHubRepo", ""))) c.GitHubRepo = Json.Str(d, "gitHubRepo", "");
                 }

@@ -48,7 +48,7 @@ namespace MineHunter
             try
             {
                 string dir = RulePack.DataDir;
-                if (Environment.GetEnvironmentVariable("MINEHUNTER_DATA_DIR") != null) return;
+                if (!string.IsNullOrEmpty(RulePack.TestDataDirOverride)) return;
                 var admins = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null);
                 var system = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null);
                 var users = new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null);

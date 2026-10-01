@@ -56,6 +56,7 @@ namespace MineHunter.Scanning
                     res.PreviousScanIssues.Add("The previous scan did not finish (crashed, was killed or the PC was switched off). If that was not you, something may be interfering with scanners.");
                 File.WriteAllText(LockFile, DateTime.Now.ToString("o") + " pid=" + Process.GetCurrentProcess().Id);
                 if (!string.IsNullOrEmpty(ctx.SelfPath)) res.SelfHash = Hashing.Sha256(ctx.SelfPath);
+                string weak = SelfProtection.DataFolderWeakness(); if (weak != null) res.PreviousScanIssues.Add(weak);
             }
             catch { }
 
@@ -149,6 +150,36 @@ namespace MineHunter.Scanning
             bool other = s.PostureInfo.Any(x => x.StartsWith("AV|"));
             s.ThirdPartyAv = string.Join(", ", s.PostureInfo.Where(x => x.StartsWith("AV|")).Select(x => x.Substring(3)));
             s.DefenderState = s.DefenderServiceRunning ? "Windows Defender is running" : (other ? "Windows Defender is off; other antivirus: " + s.ThirdPartyAv : "No active antivirus");
+        }
+    }
+
+    /// <summary>Checks that the folder holding the quarantine, the allow-list and downloaded rule packs really is closed to ordinary users.
+    /// It is hardened at every start under administrator rights; this reports it when that did not work (for example the data folder was first
+    /// created by a non-elevated run, or another program re-opened its permissions).</summary>
+    internal static class SelfProtection
+    {
+        public static string DataFolderWeakness()
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(RulePack.TestDataDirOverride)) return null;
+                var di = new DirectoryInfo(RulePack.DataDir);
+                if (!di.Exists) return null;
+                var sec = di.GetAccessControl();
+                foreach (System.Security.AccessControl.FileSystemAccessRule r in sec.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier)))
+                {
+                    if (r.AccessControlType != System.Security.AccessControl.AccessControlType.Allow) continue;
+                    var sid = (System.Security.Principal.SecurityIdentifier)r.IdentityReference;
+                    bool broad = sid.IsWellKnown(System.Security.Principal.WellKnownSidType.WorldSid) || sid.IsWellKnown(System.Security.Principal.WellKnownSidType.BuiltinUsersSid) || sid.IsWellKnown(System.Security.Principal.WellKnownSidType.AuthenticatedUserSid);
+                    if (!broad) continue;
+                    var w = System.Security.AccessControl.FileSystemRights.WriteData | System.Security.AccessControl.FileSystemRights.AppendData | System.Security.AccessControl.FileSystemRights.Modify
+                          | System.Security.AccessControl.FileSystemRights.FullControl | System.Security.AccessControl.FileSystemRights.DeleteSubdirectoriesAndFiles | System.Security.AccessControl.FileSystemRights.Delete;
+                    if ((r.FileSystemRights & w) != 0)
+                        return "The data folder " + RulePack.DataDir + " (quarantine, allow-list, rule updates) can be written by ordinary users, so a program running without administrator rights could tamper with it. Run MineHunter as administrator once: it closes the folder again.";
+                }
+            }
+            catch { }
+            return null;
         }
     }
 }

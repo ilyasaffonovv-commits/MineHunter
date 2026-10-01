@@ -189,10 +189,10 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             if (a.Length == 0) { O.WriteLine("path required"); return 3; }
             var al = Allowlist.Load();
             string p = PathUtil.Normalize(a[0]);
-            al.Paths.Add(p);
-            string sha = Hashing.Sha256(p); if (sha != null) al.Sha256.Add(sha);
+            string sha = al.Approve(p);
+            if (sha == null) { O.WriteLine("Cannot read " + p + " to hash it, nothing was approved (an approval is tied to the file's SHA-256)."); return 3; }
             al.Save();
-            O.WriteLine("Approved: " + p + (sha != null ? "  (SHA-256 " + sha + ")" : ""));
+            O.WriteLine("Approved: " + p + "  (SHA-256 " + sha + ")  - only this exact content is approved; if the file changes it is judged again.");
             return 0;
         }
 

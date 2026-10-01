@@ -108,8 +108,6 @@ namespace MineHunter.Scanning
             bool noExt = Path.GetExtension(name).Length == 0;
             bool wantPe = nameExec || noExt || (role & (FileRole.ProcessImage | FileRole.PersistenceTarget)) != 0;
 
-            if (ctx.Allow.Contains(path, null)) { e.Trusted = true; e.Set("allowlisted", "path"); e.Add(new Evidence("TRUST.USER_ALLOWLIST", EvidenceCategory.Trust, -100, "Approved by you (allow-list)")); return; }
-
             PeInfo pe = null;
             if (wantPe)
             {

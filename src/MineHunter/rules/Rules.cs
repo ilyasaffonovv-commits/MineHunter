@@ -61,12 +61,14 @@ namespace MineHunter.Rules
         string _packVersion = "0";
 
         public static string InstallDir { get { return AppDomain.CurrentDomain.BaseDirectory; } }
+        /// <summary>Set only by the built-in self test, in-process. It used to be an environment variable, but any program running as the
+        /// current user can set one for the processes it starts, which would let it point MineHunter at its own "allow-list" and "rule" folder.</summary>
+        internal static string TestDataDirOverride;
         public static string DataDir
         {
             get
             {
-                string over = Environment.GetEnvironmentVariable("MINEHUNTER_DATA_DIR");      // used by the automated tests only
-                if (!string.IsNullOrEmpty(over)) return over;
+                if (!string.IsNullOrEmpty(TestDataDirOverride)) return TestDataDirOverride;
                 return Path.Combine(Environment.GetEnvironmentVariable("ProgramData") ?? @"C:\ProgramData", "MineHunter");
             }
         }
@@ -86,16 +88,23 @@ namespace MineHunter.Rules
             }
             catch (Exception ex) { Log.Warn("embedded rules: " + ex.Message); }
 
+            // The rules folder next to the EXE is as writable as wherever the program was unpacked, so packs found there may only ADD detections:
+            // they cannot replace a built-in rule, lower a weight, disable a rule, or vouch for a file/publisher. Signed updates (data folder,
+            // writable only by administrators) and the embedded pack have no such limit.
             var dirs = new List<string> { Path.Combine(InstallDir, "rules"), Path.Combine(DataDir, "rules") };
             if (extraDirs != null) dirs.AddRange(extraDirs);
+            var restrictedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { NormDir(Path.Combine(InstallDir, "rules")) };
+            restrictedDirs.Remove(NormDir(Path.Combine(DataDir, "rules")));
+            if (extraDirs != null) foreach (var x in extraDirs) restrictedDirs.Remove(NormDir(x));
             foreach (var d in dirs.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 try
                 {
                     if (!Directory.Exists(d)) continue;
+                    bool restricted = restrictedDirs.Contains(NormDir(d));
                     foreach (var f in Directory.GetFiles(d, "*.json").OrderBy(x => x))
                     {
-                        try { rp.Merge(File.ReadAllText(f, Encoding.UTF8), f); }
+                        try { rp.Merge(File.ReadAllText(f, Encoding.UTF8), f, restricted); }
                         catch (Exception ex) { Log.Warn("rule file ignored (" + Path.GetFileName(f) + "): " + ex.Message); }
                     }
                     foreach (var f in Directory.GetFiles(d, "hashes*.txt")) rp.LoadHashes(f);
@@ -119,10 +128,11 @@ namespace MineHunter.Rules
             using (var r = new StreamReader(z, Encoding.UTF8)) return r.ReadToEnd();
         }
 
+        static string NormDir(string d) { try { return Path.GetFullPath(d).TrimEnd(Path.DirectorySeparatorChar); } catch { return d ?? ""; } }
         static void AddAll<T>(ICollection<T> dst, IEnumerable<T> src) { foreach (var x in src) if (!dst.Contains(x)) dst.Add(x); }
         static Regex Rx(string p) { return new Regex(p, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled); }
 
-        public void Merge(string json, string source)
+        public void Merge(string json, string source, bool restricted = false)
         {
             var root = Json.Obj(Json.Parse(json));
             if (root == null) return;
@@ -145,10 +155,10 @@ namespace MineHunter.Rules
                     var d = Json.Obj(o); if (d == null) continue;
                     string id = Json.Str(d, "id");
                     var have = CmdRules.FirstOrDefault(c => c.Id == id);
-                    if (have != null && string.CompareOrdinal(_packVersion, have.Version ?? "0") < 0) continue;      // an older pack never overrides a newer rule
+                    if (have != null && (restricted || string.CompareOrdinal(_packVersion, have.Version ?? "0") < 0)) continue;      // an older pack never overrides a newer rule
                     try
                     {
-                        var nr = new CmdRule { Id = id, Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Definitive = Json.Bool(d, "definitive"), Category = Json.Str(d, "category", "Content"), Text = Json.Str(d, "text", id) };
+                        var nr = new CmdRule { Id = id, Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = restricted ? Math.Max(0, Json.Int(d, "weight", 10)) : Json.Int(d, "weight", 10), Definitive = Json.Bool(d, "definitive"), Category = Json.Str(d, "category", "Content"), Text = Json.Str(d, "text", id) };
                         Samples(d, out nr.Match, out nr.NoMatch);
                         if (have != null) CmdRules.Remove(have);
                         CmdRules.Add(nr);
@@ -163,12 +173,12 @@ namespace MineHunter.Rules
             AddAll(SystemBinaries, Json.Strs(root, "systemBinaries"));
             AddAll(HollowTargets, Json.Strs(root, "hollowTargets"));
             AddAll(NeverExternal, Json.Strs(root, "neverExternalNetwork"));
-            AddAll(HeavyApps, Json.Strs(root, "heavyAppNames"));
+            if (!restricted) AddAll(HeavyApps, Json.Strs(root, "heavyAppNames"));
             AddAll(SecurityTools, Json.Strs(root, "securityTools"));
-            AddAll(SecurityToolsBenign, Json.Strs(root, "securityToolsBenign"));
+            if (!restricted) AddAll(SecurityToolsBenign, Json.Strs(root, "securityToolsBenign"));
             AddAll(AvDomains, Json.Strs(root, "avDomains"));
             AddAll(Brands, Json.Strs(root, "brands"));
-            AddAll(TrustedPublishers, Json.Strs(root, "trustedPublishers"));
+            if (!restricted) AddAll(TrustedPublishers, Json.Strs(root, "trustedPublishers"));
             AddAll(BrowserMinerStrings, Json.Strs(root, "browserMinerStrings"));
             AddAll(BrowserMinerStringsStrong, Json.Strs(root, "browserMinerStringsStrong"));
             AddAll(BrowserSearchHosts, Json.Strs(root, "browserSearchHosts"));
@@ -190,11 +200,11 @@ namespace MineHunter.Rules
                     var d = Json.Obj(o); if (d == null) continue;
                     try
                     {
-                        var nr = new NameRule { Id = Json.Str(d, "id"), Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = Json.Int(d, "weight", 10), Text = Json.Str(d, "text") };
+                        var nr = new NameRule { Id = Json.Str(d, "id"), Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Weight = restricted ? Math.Max(0, Json.Int(d, "weight", 10)) : Json.Int(d, "weight", 10), Text = Json.Str(d, "text") };
                         Samples(d, out nr.Match, out nr.NoMatch);
                         var list = key == "knownIocPaths" ? IocPaths : NameRules;
                         var haveN = list.FirstOrDefault(x => x.Id == nr.Id);
-                        if (haveN != null) { if (string.CompareOrdinal(_packVersion, haveN.Version ?? "0") < 0) continue; list.Remove(haveN); }
+                        if (haveN != null) { if (restricted || string.CompareOrdinal(_packVersion, haveN.Version ?? "0") < 0) continue; list.Remove(haveN); }
                         list.Add(nr);
                         Loc.RegisterRuleText(nr.Id, Json.Str(d, "textRu"));
                     }
@@ -206,9 +216,9 @@ namespace MineHunter.Rules
                 foreach (var o in tf)
                 {
                     var d = Json.Obj(o); if (d == null) continue;
-                    var tr = new TaskFolderRule { Id = Json.Str(d, "id"), Version = _packVersion, Folder = Json.Str(d, "folder"), Weight = Json.Int(d, "weight", 25), Text = Json.Str(d, "text"), Allowed = new HashSet<string>(Json.Strs(d, "allowedNames"), StringComparer.OrdinalIgnoreCase) };
+                    var tr = new TaskFolderRule { Id = Json.Str(d, "id"), Version = _packVersion, Folder = Json.Str(d, "folder"), Weight = restricted ? Math.Max(0, Json.Int(d, "weight", 25)) : Json.Int(d, "weight", 25), Text = Json.Str(d, "text"), Allowed = new HashSet<string>(Json.Strs(d, "allowedNames"), StringComparer.OrdinalIgnoreCase) };
                     var haveTr = TaskFolderRules.FirstOrDefault(x => x.Id == tr.Id);
-                    if (haveTr != null) { if (string.CompareOrdinal(_packVersion, haveTr.Version ?? "0") < 0) continue; TaskFolderRules.Remove(haveTr); }
+                    if (haveTr != null) { if (restricted || string.CompareOrdinal(_packVersion, haveTr.Version ?? "0") < 0) continue; TaskFolderRules.Remove(haveTr); }
                     TaskFolderRules.Add(tr);
                     Loc.RegisterRuleText(tr.Id, Json.Str(d, "textRu"));
                 }
@@ -216,9 +226,11 @@ namespace MineHunter.Rules
             if (vd != null) AddAll(VulnerableDrivers, Json.Strs(vd, "names"));
             var bh = Json.Obj(root.ContainsKey("badHashes") ? root["badHashes"] : null);
             if (bh != null) foreach (var kv in bh) BadHashes[kv.Key.ToLowerInvariant()] = Convert.ToString(kv.Value);
-            var gh = Json.Obj(root.ContainsKey("knownGoodHashes") ? root["knownGoodHashes"] : null);
+            var gh = restricted ? null : Json.Obj(root.ContainsKey("knownGoodHashes") ? root["knownGoodHashes"] : null);
             if (gh != null) foreach (var kv in gh) if (kv.Key.Length == 64) GoodHashes[kv.Key.ToLowerInvariant()] = Convert.ToString(kv.Value);
-            AddAll(DisabledRules, Json.Strs(root, "disabledRules"));
+            if (!restricted) AddAll(DisabledRules, Json.Strs(root, "disabledRules"));
+            else if (root.ContainsKey("disabledRules") || root.ContainsKey("knownGoodHashes") || root.ContainsKey("trustedPublishers") || root.ContainsKey("heavyAppNames"))
+                Log.Warn("rule pack " + source + " is next to the EXE (not signed, not protected): its trust/disable fields were ignored, only added detections were used");
         }
 
         void LoadHashes(string file)
@@ -298,7 +310,9 @@ namespace MineHunter.Rules
         }
     }
 
-    /// <summary>User-approved exceptions ("I know this one, it is mine"). Stored locally, matched by SHA-256 or exact path.</summary>
+    /// <summary>User-approved exceptions ("I know this one, it is mine"). A file is trusted only while its SHA-256 matches what was approved: a path says nothing
+    /// about the file that sits there now, so a program that overwrote an approved file (or dropped one at an approved path) would otherwise inherit the approval.
+    /// Path entries written by older versions are kept in the file but never trusted on their own.</summary>
     public sealed class Allowlist
     {
         public readonly HashSet<string> Sha256 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -329,10 +343,18 @@ namespace MineHunter.Rules
             catch (Exception ex) { Log.Warn("allowlist save: " + ex.Message); }
         }
 
+        /// <summary>Approves the file as it is right now. Returns the SHA-256, or null when the file cannot be read and hashed (then nothing is approved).</summary>
+        public string Approve(string path)
+        {
+            string sha = Hashing.Sha256(path);
+            if (sha == null) return null;
+            Sha256.Add(sha); Paths.Add(PathUtil.Normalize(path));
+            return sha;
+        }
+
         public bool Contains(string path, string sha256)
         {
-            if (!string.IsNullOrEmpty(sha256) && Sha256.Contains(sha256)) return true;
-            return !string.IsNullOrEmpty(path) && Paths.Contains(PathUtil.Normalize(path));
+            return !string.IsNullOrEmpty(sha256) && Sha256.Contains(sha256);       // the path is accepted as a parameter for callers, but never trusted by itself
         }
     }
 }

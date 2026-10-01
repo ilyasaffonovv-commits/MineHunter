@@ -651,9 +651,12 @@ namespace MineHunter.Gui
             string msg = L("Mark as safe and stop reporting these files?\n\n", "Пометить безопасным и больше не сообщать об этих файлах?\n\n") + string.Join("\n", paths.Take(6)) + (paths.Count > 6 ? "\n…" : "") + L("\n\nOnly do this if you are sure you know what the program is.", "\n\nДелайте это, только если точно знаете, что это за программа.");
             if (MessageBox.Show(W, msg, "MineHunter", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             var al = Allowlist.Load();
-            foreach (var p in paths) { al.Paths.Add(PathUtil.Normalize(p)); string h = Hashing.Sha256(p); if (h != null) al.Sha256.Add(h); }
+            var unreadable = new List<string>();
+            foreach (var p in paths) if (al.Approve(p) == null) unreadable.Add(p);
             al.Save();
-            Log.Info("Marked as safe: " + string.Join("; ", paths));
+            Log.Info("Marked as safe: " + string.Join("; ", paths.Except(unreadable)));
+            if (unreadable.Count > 0)
+                MessageBox.Show(W, L("These files could not be read, so they were NOT approved (an approval is tied to the file's SHA-256):\n", "Эти файлы не удалось прочитать, поэтому они НЕ помечены безопасными (пометка привязана к SHA-256 файла):\n") + string.Join("\n", unreadable), "MineHunter", MessageBoxButton.OK, MessageBoxImage.Warning);
             if (f != null) { _res.Findings.Remove(f); RenderHeroFromResult(); } else if (_res != null) _res.Observations.RemoveAll(o => ents.Contains(o));
             PopulateResults();
         }

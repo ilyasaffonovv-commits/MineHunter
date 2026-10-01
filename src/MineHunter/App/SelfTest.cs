@@ -40,6 +40,56 @@ namespace MineHunter
 
         static Verdict V(params Entity[] es) { string why; return RiskEngine.Decide(RiskEngine.Compute(es), out why); }
 
+        /// <summary>An attacker running as the current user can write next to the EXE, set environment variables and edit user-level files. None of that may be
+        /// enough to switch MineHunter off, redirect its data, or make it trust the attacker's own file.</summary>
+        static void SelfProtectionChecks()
+        {
+            W.WriteLine("\nSelf-protection (ordinary-user tampering must not weaken the scanner)");
+            string tmp = Path.Combine(Path.GetTempPath(), "mh_sp_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(tmp);
+            try
+            {
+                string f = Path.Combine(tmp, "approved.bin");
+                File.WriteAllBytes(f, new byte[] { 1, 2, 3, 4, 5 });
+                var al = new Allowlist();
+                string sha = al.Approve(f);
+                Check("allow-list: an approved file is trusted by its SHA-256", sha != null && al.Contains(f, sha));
+                File.WriteAllBytes(f, new byte[] { 9, 9, 9, 9 });
+                string sha2 = Hashing.Sha256(f);
+                Check("allow-list: the same path with different content is NOT trusted (a replaced file loses its approval)", !al.Contains(f, sha2) && !al.Contains(f, null));
+                Check("allow-list: a file that cannot be hashed is not approved at all", new Allowlist().Approve(Path.Combine(tmp, "missing.bin")) == null);
+
+                string baseRule = "{\"version\":\"2026.01.01.1\",\"cmdlinePatterns\":[{\"id\":\"CMD.SP.X\",\"regex\":\"spx\",\"weight\":30,\"category\":\"Content\",\"text\":\"t\"}]}";
+                string evil = "{\"version\":\"2099.01.01.1\",\"cmdlinePatterns\":[{\"id\":\"CMD.SP.X\",\"regex\":\"zzz\",\"weight\":0,\"category\":\"Content\",\"text\":\"t\"},"
+                            + "{\"id\":\"CMD.SP.NEW\",\"regex\":\"newrule\",\"weight\":20,\"category\":\"Content\",\"text\":\"t\"},{\"id\":\"CMD.SP.NEG\",\"regex\":\"negrule\",\"weight\":-50,\"category\":\"Content\",\"text\":\"t\"}],"
+                            + "\"disabledRules\":[\"CMD.SP.X\"],\"trustedPublishers\":[\"Evil Miner Inc\"],\"heavyAppNames\":[\"evilminer\"],\"knownGoodHashes\":{\"" + new string('b', 64) + "\":\"x\"}}";
+                var pk = new RulePack(); pk.Merge(baseRule, "base"); pk.Merge(evil, "next-to-exe", true); pk.Build();
+                var x = pk.CmdRules.SingleOrDefault(r => r.Id == "CMD.SP.X");
+                Check("a pack next to the EXE cannot replace, weaken or disable a built-in rule", x != null && x.Weight == 30 && x.Rx.IsMatch("spx") && !x.Rx.IsMatch("zzz"));
+                Check("a pack next to the EXE cannot vouch for a publisher, an app or a file", !pk.IsTrustedPublisher("Evil Miner Inc") && !pk.HeavyApps.Contains("evilminer") && pk.GoodHashes.Count == 0);
+                var nw = pk.CmdRules.SingleOrDefault(r => r.Id == "CMD.SP.NEW"); var ng = pk.CmdRules.SingleOrDefault(r => r.Id == "CMD.SP.NEG");
+                Check("a pack next to the EXE can still ADD a detection; a negative (trust) weight is clamped to 0", nw != null && nw.Weight == 20 && ng != null && ng.Weight == 0);
+
+                string inst = Path.Combine(tmp, "install.json"), usr = Path.Combine(tmp, "user.json");
+                File.WriteAllText(inst, "{\"updateManifestUrl\":\"https://evil.invalid/v.json\",\"updatePublicKeyXml\":\"<RSAKeyValue>evil</RSAKeyValue>\",\"scanMemory\":false,\"scanBrowsers\":false,\"autoUpdateRules\":false,\"language\":\"ru\"}");
+                var c = AppConfig.Load(inst, usr);
+                Check("config.json next to the EXE cannot change the update address, the signing key or the scan switches", c.UpdateManifestUrl == AppConfig.DefaultManifestUrl && c.UpdatePublicKeyXml == AppConfig.DefaultPublicKeyXml && c.ScanMemory && c.ScanBrowsers && c.AutoUpdateRules);
+                Check("... while a harmless interface preference still works", c.Language == "ru");
+                File.WriteAllText(usr, "{\"scanMemory\":false}");
+                Check("the protected user config in the data folder may change them", !AppConfig.Load(inst, usr).ScanMemory);
+
+                string oldEnv = Environment.GetEnvironmentVariable("MINEHUNTER_DATA_DIR");
+                try
+                {
+                    Environment.SetEnvironmentVariable("MINEHUNTER_DATA_DIR", tmp);
+                    Check("the data folder cannot be redirected with an environment variable", RulePack.TestDataDirOverride == null && !string.Equals(RulePack.DataDir.TrimEnd('\\'), tmp.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
+                }
+                finally { Environment.SetEnvironmentVariable("MINEHUNTER_DATA_DIR", oldEnv); }
+            }
+            catch (Exception ex) { Check("self-protection checks", false, ex.Message); }
+            finally { try { Directory.Delete(tmp, true); } catch { } }
+        }
+
         public static int Run(TextWriter w)
         {
             W = w; passed = failed = 0;
@@ -114,6 +164,8 @@ namespace MineHunter
                 foreach (var r in rules.IocPaths.Concat(rules.NameRules)) { if (r.Match.Length + r.NoMatch.Length == 0) continue; sampleRules++; foreach (var t in r.Match) { sampleLines++; if (!r.Rx.IsMatch(t.ToLowerInvariant())) bad.Add(r.Id + " must match: " + Text.Trunc(t, 50)); } foreach (var t in r.NoMatch) { sampleLines++; if (r.Rx.IsMatch(t.ToLowerInvariant())) bad.Add(r.Id + " must NOT match: " + Text.Trunc(t, 50)); } }
                 Check("every rule's own samples hold (" + sampleRules + " rules, " + sampleLines + " sample lines: malicious ones match, benign ones do not)", bad.Count == 0 && sampleRules > 0, string.Join("; ", bad.Take(3)));
             }
+
+            SelfProtectionChecks();
 
             w.WriteLine("\nRisk engine calibration (false-positive safety)");
             Check("unsigned + temp + high CPU alone stays Clean/low", V(Ent(EntityKind.File, "a", E("SIG.UNSIGNED", EvidenceCategory.Signature, 6), E("LOC.TEMP", EvidenceCategory.Location, 6), E("BEH.CPU_SUSTAINED", EvidenceCategory.Behavior, 10))) == Verdict.Clean);
@@ -200,12 +252,12 @@ namespace MineHunter
             catch (Exception ex) { Check("signature round trip", false, ex.Message); }
 
             w.WriteLine("\nUpdate flow end-to-end (loopback server + temporary data folder)");
-            string oldData = Environment.GetEnvironmentVariable("MINEHUNTER_DATA_DIR");
+            string oldData = RulePack.TestDataDirOverride;
             string tmpData = Path.Combine(Path.GetTempPath(), "mh_upd_" + Guid.NewGuid().ToString("N").Substring(0, 6));
             System.Net.HttpListener srv = null;
             try
             {
-                Environment.SetEnvironmentVariable("MINEHUNTER_DATA_DIR", tmpData);
+                RulePack.TestDataDirOverride = tmpData;
                 string kd = Path.Combine(tmpData, "keys"); Directory.CreateDirectory(kd);
                 Updater.GenerateKeys(kd); string pub = File.ReadAllText(Path.Combine(kd, "update_public.xml")), priv = Path.Combine(kd, "update_private.xml");
                 string otherDir = Path.Combine(tmpData, "keys2"); Directory.CreateDirectory(otherDir); Updater.GenerateKeys(otherDir);
@@ -257,7 +309,7 @@ namespace MineHunter
             finally
             {
                 try { if (srv != null) { srv.Stop(); srv.Close(); } } catch { }
-                Environment.SetEnvironmentVariable("MINEHUNTER_DATA_DIR", oldData);
+                RulePack.TestDataDirOverride = oldData;
                 try { Directory.Delete(tmpData, true); } catch { }
             }
 
