@@ -92,6 +92,23 @@ namespace MineHunter.Scanning
             e.Set("role", ((int)role | cur).ToString());
         }
 
+        /// <summary>Marks files that are game cheats or similar tools by name (file, the last folders, version info). The mark only changes how a finding is graded and
+        /// what is removed by default: evidence of a miner or of malware always wins over it (see RiskEngine).</summary>
+        void ToolClassify(Entity e, string path, PeInfo pe)
+        {
+            if (ctx.Rules.ToolClasses.Count == 0) return;
+            try
+            {
+                var parts = path.Split('\\'); var sb = new StringBuilder();
+                for (int i = Math.Max(0, parts.Length - 4); i < parts.Length; i++) sb.Append(parts[i]).Append(' ');
+                if (pe != null) sb.Append(pe.Product).Append(' ').Append(pe.Description).Append(' ').Append(pe.Company).Append(' ').Append(pe.OriginalName).Append(' ').Append(pe.InternalName);
+                string blob = sb.ToString();
+                foreach (var tr in ctx.Rules.ToolClasses)
+                    if (tr.Rx.IsMatch(blob)) { e.Set("toolClass", tr.Class); e.Set("toolRule", tr.Id); return; }
+            }
+            catch { }
+        }
+
         void Analyze(Entity e, string path, FileRole role)
         {
             FileInfo fi;
@@ -104,7 +121,7 @@ namespace MineHunter.Scanning
             string name = fi.Name;
             string nameLower = name.ToLowerInvariant();
             bool nameExec = PathUtil.IsExecutableExt(name);
-            bool nameScript = PathUtil.IsScriptExt(name);
+            bool nameScript = PathUtil.IsScriptExt(name) || ((role & FileRole.PersistenceTarget) != 0 && PathUtil.IsInterpretedExt(name));
             bool noExt = Path.GetExtension(name).Length == 0;
             bool wantPe = nameExec || noExt || (role & (FileRole.ProcessImage | FileRole.PersistenceTarget)) != 0;
 
@@ -205,6 +222,7 @@ namespace MineHunter.Scanning
                 var deep = PeAnalyzer.Analyze(path, true);
                 pe = deep.IsPe ? deep : pe;
                 StorePe(e, pe);
+                ToolClassify(e, path, pe);
                 AddPeEvidence(e, pe, tc, pc, ti);
             }
 

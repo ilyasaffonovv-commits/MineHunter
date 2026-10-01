@@ -33,6 +33,7 @@ namespace MineHunter
             new[] { "Persistent program: ", "Программа с автозапуском: " },
             new[] { "Suspicious item: ", "Подозрительный объект: " },
             new[] { "Dangerous item: ", "Опасный объект: " },
+            new[] { "Game cheat / hack tool (kept): ", "Игровой чит / хакерская утилита (оставлено): " },
         };
 
         public static string Title(string t)
@@ -59,6 +60,7 @@ namespace MineHunter
             Tuple.Create(new Regex(@"^Remove extension ""(.+)"" \(files moved to quarantine; close the browser first\)$"), "Удалить расширение «{0}» (файлы уходят в карантин; сначала закройте браузер)"),
             Tuple.Create(new Regex(@"^Review manually: (.+)$"), "Проверьте вручную: {0}"),
             Tuple.Create(new Regex(@"^Stop process (.+?) \(PID (\d+)\)$"), "Остановить процесс {0} (PID {1})"),
+            Tuple.Create(new Regex(@"^Remove the hidden stream ""(.+?)"" from (.+?) \(a copy is kept, restorable\)$"), "Удалить скрытый поток «{0}» из {1} (копия сохраняется, можно восстановить)"),
             Tuple.Create(new Regex(@"^Quarantine file (.+?) \(a copy is kept, restorable\)$"), "Поместить файл {0} в карантин (копия сохраняется, файл можно восстановить)"),
         };
 
@@ -112,6 +114,7 @@ namespace MineHunter
             if (f == null) return "";
             if (!Ru) return f.Recommendation;
             string r = f.Recommendation ?? "";
+            if (r.StartsWith("Kept:")) return "Оставлено: похоже на игровой чит или хакерскую утилиту, которую поставили сознательно, это не майнер. По умолчанию не удаляется. Если вы её не ставили, отметьте действия и нажмите «Обезвредить».";
             if (r.StartsWith("Review only")) return "Только для просмотра — автоматически здесь ничего отменить нельзя.";
             if (r.StartsWith("Review.")) return "Проверьте. Если не узнаёте эту программу, отметьте нужные действия и нажмите «Обезвредить». Удалённые файлы и настройки можно вернуть из карантина.";
             if (r.StartsWith("Neutralize")) return "Обезвредить: остановить процессы, убрать записи автозапуска и поместить файлы в карантин. Удалённые файлы и настройки можно вернуть из карантина.";

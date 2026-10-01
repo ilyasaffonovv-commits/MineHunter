@@ -30,6 +30,8 @@ namespace MineHunter
             var cfg = AppConfig.Load();
             Loc.Init(cfg.Language);
             try { Directory.CreateDirectory(RulePack.DataDir); HardenDataDir(); Log.FilePath = Path.Combine(RulePack.DataDir, "minehunter.log"); TrimLog(Log.FilePath); } catch { }
+            // a cleanup that was killed (or lost power) may have left programs frozen: let them go again before anything else
+            try { MineHunter.Remediation.RemediationEngine.RecoverInterrupted(); } catch { }
 
             bool gui = args.Length == 0 || args[0].Equals("--gui", StringComparison.OrdinalIgnoreCase);
             if (!gui)

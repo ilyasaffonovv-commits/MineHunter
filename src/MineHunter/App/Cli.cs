@@ -30,6 +30,7 @@ namespace MineHunter
         --yes                             do not ask for confirmation
         --min suspicious|high|malware     lowest verdict that --fix touches (default: high)
         --only <text>                     with --fix: touch only findings whose files/paths/names contain <text>
+        --include-tools                   with --fix: also touch game cheats / hack tools (kept by default)
         --all-steps                       also run optional steps (default: recommended steps only)
         --no-restore-point                with --fix: do not ask Windows for a System Restore point first
         --report-dir <dir>                where report.json / report.txt go (default: a Reports folder next to this EXE)
@@ -99,7 +100,7 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             {
                 var min = (Opt(a, "--min") ?? "high").ToLowerInvariant();
                 Verdict minV = min.StartsWith("susp") ? Verdict.Suspicious : min.StartsWith("mal") ? Verdict.Malware : Verdict.HighRisk;
-                var todo = res.Findings.Where(f => f.Verdict >= minV).ToList();
+                var todo = res.Findings.Where(f => f.Verdict >= minV && (f.ToolClass == null || Has(a, "--include-tools"))).ToList();
                 string only = Opt(a, "--only");
                 if (only != null) todo = todo.Where(f => f.Entities.Any(e => (e.Location ?? "").IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0 || (e.Title ?? "").IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
                 bool all = Has(a, "--all-steps");
@@ -109,20 +110,51 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                     O.WriteLine("\nPlanned actions:");
                     foreach (var f in todo) { O.WriteLine("  " + f.Id + " [" + f.Verdict + "] " + Loc.Title(f.Title)); foreach (var s in f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault))) O.WriteLine("     - " + Loc.Step(s)); }
                     if (!Has(a, "--yes")) { O.WriteLine("\nNothing was changed. Add --yes to execute these actions (removed files and settings are saved to quarantine and can be restored; a stopped process is not restarted)."); return 4; }
-                    outcomes = new List<FindingOutcome>();
-                    if (!Has(a, "--no-restore-point") && cfg.CreateRestorePoint) O.WriteLine("\nRestore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + todo.Count + " finding(s)"));
-                    foreach (var f in todo)
+                    using (var cleanLock = RemediationEngine.CleanupLock())
                     {
-                        O.WriteLine("\nNeutralising " + f.Id + " ...");
-                        var steps = f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault)).ToList();
-                        var oc = RemediationEngine.Execute(ScanEngine.LastContext, f, steps, m => O.WriteLine("   " + m));
-                        outcomes.Add(new FindingOutcome { FindingId = f.Id, Outcome = oc });
+                        if (cleanLock == null) { O.WriteLine("\nAnother MineHunter is cleaning this computer right now. Nothing was changed; try again when it has finished."); return 3; }
+                        outcomes = new List<FindingOutcome>();
+                        if (!Has(a, "--no-restore-point") && cfg.CreateRestorePoint) O.WriteLine("\nRestore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + todo.Count + " finding(s)"));
+                        // every process that is going to be stopped is frozen before the first file is touched, so that a second program of the same infection cannot put things back meanwhile
+                        var allSteps = todo.SelectMany(f => f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault))).ToList();
+                        var frozenAll = RemediationEngine.FreezeProcesses(allSteps, m => O.WriteLine("   " + m));
+                        try
+                        {
+                            foreach (var f in todo)
+                            {
+                                O.WriteLine("\nNeutralising " + f.Id + " ...");
+                                var steps = f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault)).ToList();
+                                var oc = RemediationEngine.Execute(ScanEngine.LastContext, f, steps, m => O.WriteLine("   " + m));
+                                outcomes.Add(new FindingOutcome { FindingId = f.Id, Outcome = oc });
+                            }
+                        }
+                        finally { RemediationEngine.ResumeProcesses(frozenAll); }
+                        O.WriteLine("\nRescanning to verify ...");
+                        var re = Verifier.Rescan(opt, res.Findings, outcomes, CancellationToken.None, prog);
+                        foreach (var oc in outcomes)
+                        {
+                            var ff = res.Findings.First(x => x.Id == oc.FindingId);
+                            O.WriteLine("  " + oc.FindingId + ": " + ReportWriter.Badge(ff, oc) + " " + Loc.Title(ff.Title) + "\n       " + Loc.RescanNote(oc.RescanNote) + (oc.StillPresent.Count > 0 ? "\n       still present: " + string.Join("; ", oc.StillPresent) : ""));
+                        }
+                        // a second program of the same infection (or a scheduled task) may put things back, or something new may appear within seconds: look again, clean again, at most twice more
+                        for (int round = 2; round <= 3; round++)
+                        {
+                            var again = re.Findings.Where(f => f.Verdict >= minV && f.ToolClass == null).ToList();
+                            if (again.Count == 0) break;
+                            O.WriteLine("\nRound " + round + ": " + again.Count + " finding(s) are still there or came back after cleaning.");
+                            System.Threading.Thread.Sleep(5000);
+                            var stepsAgain = again.SelectMany(f => f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault))).ToList();
+                            var frozen2 = RemediationEngine.FreezeProcesses(stepsAgain, m => O.WriteLine("   " + m));
+                            var out2 = new List<FindingOutcome>();
+                            try { foreach (var f in again) { var oc2 = RemediationEngine.Execute(ScanEngine.LastContext, f, f.Steps.Where(s => s.Type != ActionType.ReviewOnly && (all || s.RecommendedByDefault)).ToList(), m => O.WriteLine("   " + m)); out2.Add(new FindingOutcome { FindingId = f.Id, Outcome = oc2 }); } }
+                            finally { RemediationEngine.ResumeProcesses(frozen2); }
+                            re = Verifier.Rescan(opt, again, out2, CancellationToken.None, prog);
+                            foreach (var oc in out2) { var ff = again.First(x => x.Id == oc.FindingId); O.WriteLine("  " + ff.Id + ": " + ReportWriter.Badge(ff, oc) + " " + Loc.Title(ff.Title) + "\n       " + Loc.RescanNote(oc.RescanNote)); }
+                            res.PreviousScanIssues.Add("After cleaning, " + again.Count + " finding(s) were still there or came back; round " + round + " " + (re.Findings.Any(f => f.Verdict >= minV && f.ToolClass == null) ? "did not remove everything" : "removed them") + ". Something on this computer may be putting them back: restart Windows and scan again.");
+                        }
+                        O.WriteLine("  Rescan result: " + re.Findings.Count(f => f.Verdict >= Verdict.HighRisk) + " high-risk/malware finding(s) remain, " + re.Findings.Count(f => f.Verdict == Verdict.Suspicious) + " suspicious.");
+                        if (outcomes.Any(o => o.Outcome != null && o.Outcome.RebootRequired)) O.WriteLine("  ** Restart Windows to finish the cleanup (locked files are scheduled for deletion). **");
                     }
-                    O.WriteLine("\nRescanning to verify ...");
-                    var re = Verifier.Rescan(opt, res.Findings, outcomes, CancellationToken.None, prog);
-                    foreach (var oc in outcomes) O.WriteLine("  " + oc.FindingId + ": " + oc.Verdict + " - " + Loc.RescanNote(oc.RescanNote) + (oc.StillPresent.Count > 0 ? "\n       still present: " + string.Join("; ", oc.StillPresent) : ""));
-                    O.WriteLine("  Rescan result: " + re.Findings.Count(f => f.Verdict >= Verdict.HighRisk) + " high-risk/malware finding(s) remain, " + re.Findings.Count(f => f.Verdict == Verdict.Suspicious) + " suspicious.");
-                    if (outcomes.Any(o => o.Outcome != null && o.Outcome.RebootRequired)) O.WriteLine("  ** Restart Windows to finish the cleanup (locked files are scheduled for deletion). **");
                 }
             }
             string rdir = Opt(a, "--report-dir");
@@ -156,7 +188,7 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             foreach (var f in r.Findings)
             {
                 O.WriteLine();
-                O.WriteLine("[" + Loc.Verdict(f.Verdict) + " " + f.Score + "] " + f.Id + "  " + Loc.Title(f.Title));
+                O.WriteLine(ReportWriter.Badge(f, null) + " [" + Loc.Verdict(f.Verdict) + " " + f.Score + "] " + f.Id + "  " + Loc.Title(f.Title));
                 foreach (var e in f.TopEvidence.Take(6)) O.WriteLine("     " + (e.Weight >= 0 ? "+" : "") + e.Weight + "  " + Loc.Ev(e) + (string.IsNullOrEmpty(e.Detail) ? "" : "   {" + Text.Trunc(e.Detail, 100) + "}"));
                 foreach (var c in ThreatGraph.Render(f, true).Take(12)) O.WriteLine("     " + c);
                 if (f.WhyNotHigher != null) O.WriteLine("     (" + Loc.T("det.capped") + ": " + Loc.WhyNotHigher(f.WhyNotHigher) + ")");

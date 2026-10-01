@@ -75,6 +75,7 @@ namespace MineHunter.Scanning
                     Task.Run(() => Stage(ctx, "scheduled tasks", () => TaskScanner.Run(ctx))),
                     Task.Run(() => Stage(ctx, "WMI subscriptions", () => WmiScanner.Run(ctx))),
                     Task.Run(() => Stage(ctx, "other autostart points", () => ExtraPersistenceScanner.Run(ctx))),
+                    Task.Run(() => Stage(ctx, "more registry autostart points", () => MorePersistenceScanner.Run(ctx))),
                 };
                 Task.WaitAll(persistenceTasks.ToArray(), ct);
                 ctx.Report("System tampering checks...", 60);

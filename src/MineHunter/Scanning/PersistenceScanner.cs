@@ -17,6 +17,8 @@ namespace MineHunter.Scanning
     /// this evaluates what it launches and registers the item only when it is worth looking at.</summary>
     internal static class Persist
     {
+        // "C:\Users\x\notes.txt:payload.exe": a program started out of a hidden NTFS stream. File.Exists() cannot even see such a path, so it is matched by its shape.
+        static readonly Regex AdsTargetRx = new Regex(@"(?<![A-Za-z])[A-Za-z]:\\(?:[^""'<>|?*:\r\n]+\\)*[^""'<>|?*:\\\r\n]+\.[A-Za-z0-9]{1,5}:(?!\\)(?<s>[^\\/:""'<>|?*\s,;]+)", RegexOptions.Compiled);
         static readonly HashSet<string> Lolbins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "cmstp.exe", "bitsadmin.exe", "certutil.exe", "msiexec.exe", "schtasks.exe", "wmic.exe", "forfiles.exe", "pcalua.exe", "conhost.exe", "explorer.exe", "start.exe" };
 
@@ -36,7 +38,7 @@ namespace MineHunter.Scanning
             foreach (var p in paths.Take(5))
             {
                 if (string.IsNullOrEmpty(p) || ctx.IsSelf(p)) continue;
-                bool isExe = PathUtil.IsExecutableExt(p) || PathUtil.IsScriptExt(p) || p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
+                bool isExe = PathUtil.IsExecutableExt(p) || PathUtil.IsScriptExt(p) || PathUtil.IsInterpretedExt(p) || p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
                 if (!isExe) continue;
                 bool exists = false; try { exists = File.Exists(p); } catch { }
                 if (!exists)
@@ -50,6 +52,12 @@ namespace MineHunter.Scanning
                 targets.Add(f);
                 if (lolbin && PathUtil.IsUserWritable(p)) userPathArg = true;
             }
+
+            string expandedCmd = command ?? "";
+            if (expandedCmd.IndexOf('%') >= 0) { try { expandedCmd = Environment.ExpandEnvironmentVariables(expandedCmd); } catch { } }
+            var adsHit = AdsTargetRx.Match(expandedCmd);
+            if (adsHit.Success && !adsHit.Groups["s"].Value.StartsWith("Zone", StringComparison.OrdinalIgnoreCase))
+                e.Add(new Evidence("PERSIST.ADS_TARGET", EvidenceCategory.Persistence, 40, mechanism + " starts something that lives inside a hidden NTFS data stream of another file (\"" + adsHit.Groups["s"].Value + "\"). Normal software does not do this", Text.Trunc(adsHit.Value, 200)));
 
             var untrusted = targets.Where(t => !t.Trusted).ToList();
             foreach (var t in untrusted)
@@ -551,7 +559,7 @@ namespace MineHunter.Scanning
             return p;
         }
 
-        static void One(ScanContext ctx, RegistryKey root, string name, Dictionary<string, string> states)
+        internal static void One(ScanContext ctx, RegistryKey root, string name, Dictionary<string, string> states)
         {
             using (var k = root.OpenSubKey(name))
             {
@@ -560,8 +568,19 @@ namespace MineHunter.Scanning
                 int type = 0, start = 3;
                 try { type = Convert.ToInt32(k.GetValue("Type", 0)); } catch { }
                 try { start = Convert.ToInt32(k.GetValue("Start", 3)); } catch { }
-                string dllParam = null;
-                using (var p = k.OpenSubKey("Parameters")) if (p != null) dllParam = Convert.ToString(p.GetValue("ServiceDll", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                string dllParam = null, wrapped = null;
+                using (var p = k.OpenSubKey("Parameters"))
+                    if (p != null)
+                    {
+                        dllParam = Convert.ToString(p.GetValue("ServiceDll", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                        // NSSM / srvany style wrappers: the service image is a harmless wrapper, the program that really runs is a parameter
+                        string app = Convert.ToString(p.GetValue("Application", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                        if (!string.IsNullOrWhiteSpace(app))
+                        {
+                            string aargs = Convert.ToString(p.GetValue("AppParameters", null, RegistryValueOptions.DoNotExpandEnvironmentNames));
+                            wrapped = (app.Contains(" ") && !app.StartsWith("\"") ? "\"" + app + "\"" : app) + (string.IsNullOrWhiteSpace(aargs) ? "" : " " + aargs);
+                        }
+                    }
                 if (string.IsNullOrWhiteSpace(image) && string.IsNullOrWhiteSpace(dllParam)) return;
                 ctx.Stats.ServicesScanned++;
 
@@ -571,6 +590,7 @@ namespace MineHunter.Scanning
                     cmd = PathUtil.WinDir + "\\" + image.TrimStart('\\');
                 else if (isDriver && !string.IsNullOrEmpty(image) && image.StartsWith("\\SystemRoot\\", StringComparison.OrdinalIgnoreCase))
                     cmd = image;
+                if (wrapped != null) cmd = (cmd ?? "") + " " + wrapped;
                 string display = Convert.ToString(k.GetValue("DisplayName"));
                 string desc = Convert.ToString(k.GetValue("Description"));
                 string account = Convert.ToString(k.GetValue("ObjectName"));
@@ -585,6 +605,18 @@ namespace MineHunter.Scanning
                     bool untrusted = target != null && !target.Trusted;
 
                     if (untrusted && uw) ev.Add(new Evidence("SVC.IMAGE_USER_PATH", EvidenceCategory.Persistence, isDriver ? 28 : 22, (isDriver ? "Driver" : "Service") + " image is stored in a user-writable folder", exe));
+                    if (wrapped != null)
+                    {
+                        string wexe = PathUtil.ExtractExecutable(wrapped);
+                        var wt = wexe != null && File.Exists(wexe) ? ctx.Files.Inspect(wexe, FileRole.PersistenceTarget) : null;
+                        if (wt != null && !wt.Trusted && PathUtil.IsUserWritable(wexe))
+                        {
+                            ev.Add(new Evidence("SVC.WRAPPED_USER_PATH", EvidenceCategory.Persistence, 22, "The service is only a wrapper (NSSM or similar); the program it keeps running is unsigned and lies in a user-writable folder", wexe));
+                            ctx.Link("svc:" + name, wt.Id, "wraps");
+                        }
+                    }
+                    if (untrusted && !uw && !isDriver && exe != null && (PathUtil.Classify(exe) == PathClass.WindowsSystem || PathUtil.Classify(exe) == PathClass.WindowsOther) && target.P("sig") == "Unsigned")
+                        ev.Add(new Evidence("SVC.UNSIGNED_IN_WINDOWS", EvidenceCategory.Persistence, 10, "The service runs an unsigned program from inside the Windows folder (system folders only hold signed Microsoft programs)", exe));
                     if (untrusted && !isDriver)
                     {
                         string stem = Path.GetFileNameWithoutExtension(exe);
@@ -674,8 +706,8 @@ namespace MineHunter.Scanning
         internal static void One(ScanContext ctx, string file, string taskPath)
         {
             XDocument doc;
-            try { doc = XDocument.Load(file); } catch { return; }
-            var root = doc.Root; if (root == null) return;
+            try { doc = XDocument.Load(file); } catch { DamagedXml(ctx, file, taskPath); return; }
+            var root = doc.Root; if (root == null) { DamagedXml(ctx, file, taskPath); return; }
             var reg = root.Element(Ns + "RegistrationInfo");
             var principals = root.Element(Ns + "Principals");
             var principal = principals == null ? null : principals.Element(Ns + "Principal");
@@ -776,6 +808,42 @@ namespace MineHunter.Scanning
             }
         }
 
+        /// <summary>A task definition that a normal XML reader refuses. The Task Scheduler may still accept it, so what it runs is pulled out with a text search instead of
+        /// being ignored. A broken definition is also reported by itself.</summary>
+        internal static void DamagedXml(ScanContext ctx, string file, string taskPath)
+        {
+            string text;
+            try
+            {
+                var raw = File.ReadAllBytes(file);
+                if (raw.Length == 0) return;
+                Encoding enc = Encoding.UTF8;
+                if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xFE) enc = Encoding.Unicode;
+                else if (raw.Length >= 2 && raw[0] == 0xFE && raw[1] == 0xFF) enc = Encoding.BigEndianUnicode;
+                else if (raw.Length >= 4 && raw[1] == 0 && raw[3] == 0) enc = Encoding.Unicode;
+                text = enc.GetString(raw);
+            }
+            catch { return; }
+            string name = Path.GetFileName(taskPath);
+            var cmds = Regex.Matches(text, @"<(?:\w+:)?Command>\s*(?<c>.*?)\s*</(?:\w+:)?Command>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            var argm = Regex.Matches(text, @"<(?:\w+:)?Arguments>\s*(?<a>.*?)\s*</(?:\w+:)?Arguments>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            string args = argm.Count > 0 ? System.Net.WebUtility.HtmlDecode(argm[0].Groups["a"].Value) : "";
+            string id = "task:" + taskPath.ToLowerInvariant();
+            if (cmds.Count == 0)
+            {
+                var ne = ctx.GetOrAdd(id, EntityKind.Task, () => new Entity { Title = name, Location = taskPath });
+                ne.Add(new Evidence("TASK.XML_UNPARSABLE", EvidenceCategory.Tamper, 6, "The task's definition is damaged and cannot be read as XML, so what it runs is unknown", taskPath));
+                ne.Set("taskPath", taskPath); ne.Set("xmlFile", file);
+                return;
+            }
+            string cmd = System.Net.WebUtility.HtmlDecode(cmds[0].Groups["c"].Value).Trim();
+            string full = cmd + (string.IsNullOrWhiteSpace(args) ? "" : " " + args.Trim());
+            if (!cmd.StartsWith("\"") && cmd.Contains(" ") && !string.IsNullOrWhiteSpace(args)) full = "\"" + cmd + "\" " + args.Trim();
+            var e = Persist.Evaluate(ctx, id, EntityKind.Task, name, taskPath, full, "Scheduled task (damaged definition)", ev =>
+                ev.Add(new Evidence("TASK.XML_UNPARSABLE", EvidenceCategory.Tamper, 12, "The task's definition is damaged: a normal XML reader cannot parse it, yet the Task Scheduler store holds it (what it runs was read as plain text)", taskPath)));
+            if (e != null) { e.Set("taskPath", taskPath); e.Set("xmlFile", file); }
+        }
+
         /// <summary>Resolves a COM class id to its implementation path, the way COM itself does: per-user registration (HKCU) first, then the
         /// machine-wide one (HKLM, including the 32-bit view) - the exact precedence a real process would use, which is also what makes an
         /// HKCU-only registration able to silently replace a machine-wide COM handler.</summary>
@@ -854,11 +922,24 @@ namespace MineHunter.Scanning
     // ==========================================================================================================
     public static class WmiScanner
     {
+        // Permanent event subscriptions are normally kept in root\subscription, but any namespace can hold them (root\default and root\cimv2 are used to stay out of sight)
+        public static readonly string[] Namespaces = { @"root\subscription", @"root\default", @"root\cimv2" };
+
         public static void Run(ScanContext ctx)
         {
+            foreach (var ns in Namespaces) RunNamespace(ctx, ns);
+            try { Providers(ctx); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { ctx.AddBlind("WMI", "providers: " + ex.Message); }
+        }
+
+        static void RunNamespace(ScanContext ctx, string ns)
+        {
+            bool main = ns == Namespaces[0];
+            string nsTag = main ? "" : ns + ":";
             try
             {
-                var scope = new ManagementScope(@"\\.\root\subscription");
+                var scope = new ManagementScope(@"\\.\" + ns);
                 scope.Connect();
                 var filters = new Dictionary<string, ManagementBaseObject>(StringComparer.OrdinalIgnoreCase);
                 var consumers = new Dictionary<string, ManagementBaseObject>(StringComparer.OrdinalIgnoreCase);
@@ -868,7 +949,8 @@ namespace MineHunter.Scanning
 
                 using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM __EventFilter")))
                     foreach (ManagementObject o in s.Get()) filters[Convert.ToString(o["Name"])] = o;
-                foreach (var cls in new[] { "CommandLineEventConsumer", "ActiveScriptEventConsumer", "LogFileEventConsumer", "NTEventLogEventConsumer", "SMTPEventConsumer" })
+                var knownClasses = new[] { "CommandLineEventConsumer", "ActiveScriptEventConsumer", "LogFileEventConsumer", "NTEventLogEventConsumer", "SMTPEventConsumer" };
+                foreach (var cls in knownClasses)
                 {
                     try
                     {
@@ -877,6 +959,18 @@ namespace MineHunter.Scanning
                     }
                     catch { }
                 }
+                // consumers of any other class (a provider of the attacker's own)
+                try
+                {
+                    using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM __EventConsumer")))
+                        foreach (ManagementObject o in s.Get())
+                        {
+                            string c = Convert.ToString(o["__CLASS"]);
+                            if (Array.IndexOf(knownClasses, c) >= 0) continue;
+                            consumers[c + ":" + Convert.ToString(o["Name"])] = o;
+                        }
+                }
+                catch { }
                 using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM __FilterToConsumerBinding")))
                     foreach (ManagementObject o in s.Get())
                     {
@@ -884,7 +978,7 @@ namespace MineHunter.Scanning
                         bindings.Add(new KeyValuePair<string, string>(f, ccls + ":" + c));
                         boundFilters.Add(f); boundConsumers.Add(ccls + ":" + c);
                     }
-                ctx.Stats.WmiObjects = filters.Count + consumers.Count + bindings.Count;
+                ctx.Stats.WmiObjects += filters.Count + consumers.Count + bindings.Count;
 
                 foreach (var kv in consumers)
                 {
@@ -895,11 +989,13 @@ namespace MineHunter.Scanning
                     // the default Windows subscription (Service Control Manager event log) is not a finding
                     if (cls == "NTEventLogEventConsumer" && cname == "SCM Event Log Consumer" && filterName == "SCM Event Log Filter") continue;
 
-                    string id = "wmi:" + cls + ":" + cname;
-                    string cmd = null, script = null;
-                    if (cls == "CommandLineEventConsumer") cmd = Convert.ToString(o["CommandLineTemplate"]);
+                    string id = "wmi:" + nsTag + cls + ":" + cname;
+                    string cmd = null, script = null, exePath = null;
+                    if (cls == "CommandLineEventConsumer") { cmd = Convert.ToString(o["CommandLineTemplate"]); exePath = Convert.ToString(o["ExecutablePath"]); }
                     if (cls == "ActiveScriptEventConsumer") script = Convert.ToString(o["ScriptText"]) ?? Convert.ToString(o["ScriptFileName"]);
                     string commandForEval = cmd ?? (cls == "ActiveScriptEventConsumer" ? Convert.ToString(o["ScriptFileName"]) : null) ?? "";
+                    // ExecutablePath is what actually starts; the template then only holds the arguments
+                    if (!string.IsNullOrWhiteSpace(exePath)) commandForEval = (exePath.Contains(" ") && !exePath.StartsWith("\"") ? "\"" + exePath + "\"" : exePath) + " " + commandForEval;
                     var e = Persist.Evaluate(ctx, id, EntityKind.Wmi, cname, "WMI " + cls + ": " + cname, commandForEval, "WMI permanent subscription", ev =>
                     {
                         bool bound = boundConsumers.Contains(kv.Key);
@@ -916,20 +1012,53 @@ namespace MineHunter.Scanning
                             ev.Add(new Evidence("WMI.OTHER_CONSUMER", EvidenceCategory.Persistence, 8, "Unusual WMI consumer (" + cls + ")", cname));
                         else if (cls == "NTEventLogEventConsumer")
                             ev.Add(new Evidence("WMI.EVENTLOG_CONSUMER", EvidenceCategory.Persistence, 2, "Additional WMI event-log consumer", cname));
+                        else
+                            ev.Add(new Evidence("WMI.OTHER_CONSUMER", EvidenceCategory.Persistence, 14, "A WMI consumer of a non-standard class (" + cls + ") is registered: a provider that is not part of Windows is doing something on WMI events", cname));
+                        if (!main) ev.Add(new Evidence("WMI.HIDDEN_NAMESPACE", EvidenceCategory.Persistence, 12, "The subscription is kept in " + ns + " instead of root\\subscription, where tools look for it", ns));
                         if (!bound) ev.Add(new Evidence("WMI.UNBOUND", EvidenceCategory.Persistence, 2, "Consumer exists without a binding (left-over)", cname));
                     });
-                    if (e != null) { e.Set("wmiClass", cls); e.Set("consumer", cname); e.Set("filter", filterName); e.Set("query", query); e.Set("command", cmd); e.Set("script", Text.Trunc(script, 2000)); }
+                    if (e != null) { e.Set("wmiClass", cls); e.Set("consumer", cname); e.Set("filter", filterName); e.Set("query", query); e.Set("command", cmd); e.Set("script", Text.Trunc(script, 2000)); e.Set("wmiNamespace", ns); }
                 }
                 // filters bound to consumers we could not read, or orphan bindings
                 foreach (var b in bindings)
                     if (!consumers.ContainsKey(b.Value) && !b.Value.StartsWith("NTEventLogEventConsumer:SCM"))
                     {
-                        var e = ctx.GetOrAdd("wmi:binding:" + b.Key + ":" + b.Value, EntityKind.Wmi, () => new Entity { Title = "binding " + b.Key, Location = "WMI binding " + b.Key + " -> " + b.Value });
+                        var e = ctx.GetOrAdd("wmi:binding:" + nsTag + b.Key + ":" + b.Value, EntityKind.Wmi, () => new Entity { Title = "binding " + b.Key, Location = "WMI binding " + b.Key + " -> " + b.Value });
                         e.Add(new Evidence("WMI.ORPHAN_BINDING", EvidenceCategory.Persistence, 5, "WMI binding points to a consumer that cannot be read", b.Value));
                     }
             }
-            catch (UnauthorizedAccessException) { ctx.Denied("WMI", "root\\subscription"); }
-            catch (Exception ex) { ctx.AddBlind("WMI", "root\\subscription: " + ex.Message); }
+            catch (UnauthorizedAccessException) { ctx.Denied("WMI", ns); }
+            catch (Exception ex) { if (main) ctx.AddBlind("WMI", ns + ": " + ex.Message); }       // the other namespaces may simply not be reachable: only the main one is worth a blind-spot note
+        }
+
+        /// <summary>WMI providers are DLLs that WMI loads on demand; a provider that is not a signed Windows component is either third-party software or a way to run code.</summary>
+        static void Providers(ScanContext ctx)
+        {
+            foreach (var ns in Namespaces)
+            {
+                ctx.ThrowIfCancelled();
+                try
+                {
+                    var scope = new ManagementScope(@"\\.\" + ns); scope.Connect();
+                    using (var s = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Name, CLSID FROM __Win32Provider")))
+                        foreach (ManagementObject o in s.Get())
+                        {
+                            string clsid = Convert.ToString(o["CLSID"]), pname = Convert.ToString(o["Name"]);
+                            if (string.IsNullOrWhiteSpace(clsid)) continue;
+                            string hive, srv, impl = TaskScanner.ResolveComClass(clsid.Trim(), out hive, out srv);
+                            if (string.IsNullOrWhiteSpace(impl)) continue;
+                            string exe = PathUtil.ExtractExecutable(impl);
+                            if (exe == null || !File.Exists(exe)) continue;
+                            var f = ctx.Files.Inspect(exe, FileRole.PersistenceTarget);
+                            if (f == null || f.Trusted) continue;
+                            var e = Persist.Evaluate(ctx, "wmiprov:" + ns + ":" + pname, EntityKind.Wmi, "WMI provider " + pname, "WMI provider " + pname + " (" + ns + ")", impl, "WMI provider", ev =>
+                                ev.Add(new Evidence("WMI.PROVIDER_UNTRUSTED", EvidenceCategory.Persistence, 18, "A WMI provider DLL (" + pname + ") is loaded by WMI but is not signed by a trusted publisher", exe)));
+                            if (e != null) e.Set("wmiProvider", pname);
+                        }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { }
+            }
         }
 
         static string RefName(string path)

@@ -159,12 +159,17 @@ namespace MineHunter.Risk
                 }
                 var sc = Compute(members);
                 string why; var verdict = Decide(sc, out why);
+                // a game cheat or similar user tool looks like malware to every scanner (packed, unsigned, injects into other programs). It is not a miner: unless something
+                // specific to miners or malware is in the finding too, it is graded Suspicious at most and nothing is removed by default
+                string toolClass = ToolClassOf(ctxMembers);
+                if (toolClass != null && HasThreatEvidence(ctxMembers)) toolClass = null;
+                if (toolClass != null && verdict > Verdict.Suspicious) { verdict = Verdict.Suspicious; why = null; }
                 if (verdict == Verdict.Clean)
                 {
                     if (sc.Total >= ObservationAt) foreach (var m in members.Where(m => m.Score >= ObservationAt).OrderByDescending(m => m.Score).Take(1)) observations.Add(m);
                     continue;
                 }
-                var f = new Finding { Id = "F" + (++counter), Verdict = verdict, Score = (int)Math.Round(Math.Min(sc.Total, 100)), Entities = ctxMembers, WhyNotHigher = why };
+                var f = new Finding { Id = "F" + (++counter), Verdict = verdict, Score = (int)Math.Round(Math.Min(sc.Total, 100)), Entities = ctxMembers, WhyNotHigher = why, ToolClass = toolClass };
                 f.TopEvidence = sc.Items.Take(10).Select(x => x.Ev).ToList();
                 foreach (var l in links) if (memberIds.Contains(l.From) && memberIds.Contains(l.To)) f.Links.Add(l);
                 f.Title = TitleFor(f, sc);
@@ -180,12 +185,39 @@ namespace MineHunter.Risk
             return findings;
         }
 
+        /// <summary>Evidence that only miners or real malware produce. A cheat is packed, unsigned and injects code, but it does not talk to a pool, carry a miner configuration,
+        /// pose as a Windows file or match a known-bad hash.</summary>
+        static readonly string[] ThreatPrefixes =
+        {
+            "MINER", "CONTENT.MINER", "NAME.MINER", "PROC.CMD.MINER", "PROC.MEM.MINER", "PROC.MINER", "PERSIST.CMD.MINER", "SCRIPT.CMD.MINER", "WMI.SCRIPT.CMD.MINER", "NET.POOL", "NET.MINING",
+            "REP.", "ARCHIVE.MINER", "BEH.MINER", "CMD.MINER", "TAMPER.DEF_EXCL_MINER", "WATCHDOG", "MASQ.SYSTEM_NAME", "MASQ.HOMOGLYPH", "MASQ.SYSFOLDER", "IOC.PATH", "BROWSER.EXT_MINER", "HOLLOW.IMAGE", "PROC.HOLLOW"
+        };
+
+        public static bool HasThreatEvidence(IEnumerable<Entity> members)
+        {
+            foreach (var e in members)
+                foreach (var ev in e.Evidence)
+                {
+                    if (ev.Weight <= 0) continue;
+                    if (ev.Definitive) return true;
+                    foreach (var p in ThreatPrefixes) if (ev.RuleId.StartsWith(p, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            return false;
+        }
+
+        public static string ToolClassOf(IEnumerable<Entity> members)
+        {
+            foreach (var e in members) { string c = e.P("toolClass"); if (c != null) return c; }
+            return null;
+        }
+
         static string TitleFor(Finding f, Score sc)
         {
             var ids = f.Entities.SelectMany(e => e.Evidence).Where(x => x.Weight > 0).Select(x => x.RuleId).ToList();
             Func<string, bool> has = p => ids.Any(i => i.IndexOf(p, StringComparison.OrdinalIgnoreCase) >= 0);
             var main = f.Entities.OrderByDescending(e => e.Score).First();
             string name = main.Kind == EntityKind.File || main.Kind == EntityKind.Process ? main.Title : main.Title;
+            if (f.ToolClass != null) return "Game cheat / hack tool (kept): " + name;
             if (has("REP.KNOWN_BAD_HASH")) return "Known malware: " + name;
             if (has("HOLLOW")) return "Hijacked (hollowed) process: " + name;
             if (has("MINER") ) return (f.Entities.Any(e => e.Kind == EntityKind.Process) ? "Cryptominer running: " : "Cryptominer files: ") + name;
@@ -389,7 +421,7 @@ namespace MineHunter.Risk
 
         public static void Plan(ScanContext ctx, Finding f)
         {
-            bool defaultOn = f.Verdict == Verdict.HighRisk || f.Verdict == Verdict.Malware;
+            bool defaultOn = (f.Verdict == Verdict.HighRisk || f.Verdict == Verdict.Malware) && f.ToolClass == null;
             var steps = new List<RemediationStep>();
             var seenTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Action<RemediationStep> add = s => { string k = s.Type + "|" + s.Target; if (seenTargets.Add(k)) steps.Add(s); };
@@ -459,7 +491,8 @@ namespace MineHunter.Risk
                 add(new RemediationStep { Type = ActionType.QuarantineFile, EntityId = e.Id, Target = e.Location, Order = 3, RecommendedByDefault = defaultOn, Description = "Quarantine file " + e.Location + " (a copy is kept, restorable)" });
             }
             f.Steps = steps.OrderBy(s => s.Order).ToList();
-            if (!f.Steps.Any(s => s.Type != ActionType.ReviewOnly)) f.Recommendation = "Review only - nothing here can be undone automatically.";
+            if (f.ToolClass != null) f.Recommendation = "Kept: this looks like a game cheat or a hacking tool that someone installed on purpose, not a miner. It is not removed by default. If you did not install it yourself, tick the steps and press Neutralize.";
+            else if (!f.Steps.Any(s => s.Type != ActionType.ReviewOnly)) f.Recommendation = "Review only - nothing here can be undone automatically.";
             else if (f.Verdict == Verdict.Suspicious) f.Recommendation = "Review. If you do not recognise it, tick the actions and press Neutralize. Removed files and settings can be restored from Quarantine.";
             else f.Recommendation = "Neutralize: stop the processes, remove the autostart entries, then quarantine the files. Removed files and settings can be restored from Quarantine.";
         }

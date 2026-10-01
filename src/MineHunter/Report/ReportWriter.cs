@@ -22,6 +22,29 @@ namespace MineHunter.Report
 
     public static class ReportWriter
     {
+        /// <summary>The state of a finding after cleaning, in one word: REMOVED, REMOVED AFTER RESTART, PARTLY REMOVED, NOT REMOVED, or KEPT (a game cheat the user may want).</summary>
+        public static string StateTag(Finding f, FindingOutcome oc)
+        {
+            if (oc != null && oc.Verdict != null)
+                switch (oc.Verdict)
+                {
+                    case "Remediated": return Loc.L("REMOVED", "УДАЛЕНО");
+                    case "RebootRequired": return Loc.L("REMOVED AFTER RESTART", "БУДЕТ УДАЛЕНО ПОСЛЕ ПЕРЕЗАГРУЗКИ");
+                    case "Partial": return Loc.L("PARTLY REMOVED", "УДАЛЕНО ЧАСТИЧНО");
+                    case "NotAttempted": return f.ToolClass != null ? Loc.L("KEPT - game cheat / tool", "ОСТАВЛЕНО - чит / утилита") : Loc.L("NOT REMOVED", "НЕ УДАЛЕНО");
+                    default: return Loc.L("NOT REMOVED", "НЕ УДАЛЕНО");
+                }
+            if (f.ToolClass != null) return Loc.L("KEPT - game cheat / tool", "ОСТАВЛЕНО - чит / утилита");
+            return null;
+        }
+
+        /// <summary>"[CRITICAL] [REMOVED]" - the severity and, once cleaning has run, what happened to it.</summary>
+        public static string Badge(Finding f, FindingOutcome oc)
+        {
+            string tag = StateTag(f, oc);
+            return "[" + Loc.Severity(f.Verdict).ToUpperInvariant() + "]" + (tag == null ? "" : " [" + tag + "]");
+        }
+
         static string _reportsDir;
         /// <summary>Reports have nothing in them that needs protecting (no quarantine, no allow-list, no rules), so they go next to the EXE where
         /// anyone can find them without hunting through ProgramData. Falls back to the protected data folder if that location is not writable
@@ -110,7 +133,8 @@ namespace MineHunter.Report
             foreach (var f in r.Findings)
             {
                 sb.AppendLine();
-                sb.AppendLine(" [" + f.Verdict.ToString().ToUpperInvariant() + "  score " + f.Score + "  " + Loc.Severity(f.Verdict) + "]  " + f.Id + "  " + Loc.Title(f.Title));
+                var ocHead = outcomes == null ? null : outcomes.FirstOrDefault(o => o.FindingId == f.Id);
+                sb.AppendLine(" " + Badge(f, ocHead) + "  " + f.Verdict.ToString().ToUpperInvariant() + " score " + f.Score + "   " + f.Id + "  " + Loc.Title(f.Title));
                 sb.AppendLine(" " + new string('-', 74));
                 sb.AppendLine("   " + Loc.T("report.why") + ":");
                 foreach (var e in f.TopEvidence) sb.AppendLine("     " + (e.Weight >= 0 ? "+" : "") + e.Weight + "  [" + e.Category + "]  " + Loc.Ev(e) + (string.IsNullOrEmpty(e.Detail) ? "" : "   {" + Text.Trunc(e.Detail, 140) + "}") + (e.Definitive ? "  (definitive)" : ""));

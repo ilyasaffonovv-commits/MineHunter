@@ -35,6 +35,9 @@ namespace MineHunter.Util
 
     public static class PathUtil
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern uint GetLongPathNameW(string shortPath, StringBuilder longPath, uint size);
+
         public static readonly string WinDir = (Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows").TrimEnd('\\');
         public static readonly string System32 = WinDir + @"\System32";
         public static readonly string SysWow64 = WinDir + @"\SysWOW64";
@@ -60,6 +63,11 @@ namespace MineHunter.Util
             p = p.Replace('/', '\\');
             // trailing separators
             while (p.Length > 3 && p.EndsWith("\\")) p = p.Substring(0, p.Length - 1);
+            // 8.3 short names (PROGRA~1, APPDATA~1) hide where a file really is: classify and compare the long form
+            if (p.Length > 4 && p[1] == ':' && p.IndexOf('~') >= 0)
+            {
+                try { var sb = new StringBuilder(1024); uint n = GetLongPathNameW(p, sb, 1024); if (n > 0 && n < 1024) p = sb.ToString(); } catch { }
+            }
             return p;
         }
 
@@ -173,6 +181,14 @@ namespace MineHunter.Util
         {
             string e = (Path.GetExtension(path ?? "") ?? "").ToLowerInvariant();
             return e == ".exe" || e == ".dll" || e == ".sys" || e == ".scr" || e == ".cpl" || e == ".ocx" || e == ".com" || e == ".drv" || e == ".efi";
+        }
+
+        /// <summary>Files that need an interpreter, a COM host or Office to run (Python, scriptlets, Excel add-ins, shortcuts to programs). Only looked at when something
+        /// starts them automatically.</summary>
+        public static bool IsInterpretedExt(string path)
+        {
+            string e = (Path.GetExtension(path ?? "") ?? "").ToLowerInvariant();
+            return e == ".py" || e == ".pyw" || e == ".pyz" || e == ".sct" || e == ".wsh" || e == ".xll" || e == ".pif" || e == ".psd1";
         }
 
         public static bool IsScriptExt(string path)
@@ -382,6 +398,62 @@ namespace MineHunter.Util
 
     public static class Fs
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle h, StringBuilder buf, uint len, uint flags);
+
+        /// <summary>Where a path really ends up after every junction and symbolic link on the way is followed (null when it cannot be opened).</summary>
+        public static string FinalPath(string path)
+        {
+            try
+            {
+                using (var h = CreateFileW(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero))        // OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS (also opens folders)
+                {
+                    if (h.IsInvalid) return null;
+                    var sb = new StringBuilder(1024);
+                    uint n = GetFinalPathNameByHandleW(h, sb, 1024, 0);
+                    if (n == 0 || n >= 1024) return null;
+                    string s = sb.ToString();
+                    if (s.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) s = @"\\" + s.Substring(8);
+                    else if (s.StartsWith(@"\\?\")) s = s.Substring(4);
+                    return s;
+                }
+            }
+            catch { return null; }
+        }
+
+        /// <summary>True when any FOLDER on the way to the path is a junction or symbolic link (the file itself may be a cloud placeholder and is not looked at).</summary>
+        public static bool HasLinkedFolder(string path)
+        {
+            try
+            {
+                string cur = Path.GetDirectoryName(path);
+                while (!string.IsNullOrEmpty(cur))
+                {
+                    try { if (Directory.Exists(cur) && (File.GetAttributes(cur) & FileAttributes.ReparsePoint) != 0) return true; } catch { }
+                    string parent = Path.GetDirectoryName(cur);
+                    if (string.IsNullOrEmpty(parent) || string.Equals(parent, cur, StringComparison.OrdinalIgnoreCase)) break;
+                    cur = parent;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>Writes a file so that a crash or power loss leaves either the old or the new content, never a half-written one.</summary>
+        public static void WriteDurable(string path, byte[] data)
+        {
+            string tmp = path + ".tmp";
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(data, 0, data.Length);
+                fs.Flush(true);
+            }
+            if (File.Exists(path)) File.Replace(tmp, path, path + ".bak", true);
+            else File.Move(tmp, path);
+        }
+
         /// <summary>Safe recursive enumeration: skips reparse points and unreadable directories, never throws.</summary>
         public static IEnumerable<string> EnumerateFiles(string root, Func<string, bool> dirFilter, Func<string, bool> fileFilter, int maxDepth, Action<string> onDenied = null)
         {

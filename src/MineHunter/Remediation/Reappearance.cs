@@ -105,7 +105,9 @@ namespace MineHunter.Remediation
                         if (cls == null || name == null) return null;
                         try
                         {
-                            var scope = new ManagementScope(@"\\.\root\subscription"); scope.Connect();
+                            string wns = it.Extra != null && it.Extra.ContainsKey("namespace") ? Convert.ToString(it.Extra["namespace"]) : @"root\subscription";
+                            if (!System.Text.RegularExpressions.Regex.IsMatch(wns, @"^root(\\[A-Za-z0-9_]+)*$")) return null;
+                            var scope = new ManagementScope(@"\\.\" + wns); scope.Connect();
                             using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Name FROM " + cls + " WHERE Name='" + name.Replace("'", "''") + "'")))
                                 foreach (ManagementBaseObject o in q.Get()) return "WMI " + cls + " " + name;
                         }

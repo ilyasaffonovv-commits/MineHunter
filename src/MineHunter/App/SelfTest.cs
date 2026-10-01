@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using Microsoft.Win32;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -316,6 +317,228 @@ namespace MineHunter
             }
         }
 
+        static string ShortPath(string p)
+        {
+            var sb = new StringBuilder(520);
+            return GetShortPathNameW(p, sb, 520) > 0 ? sb.ToString() : null;
+        }
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern uint GetShortPathNameW(string longPath, StringBuilder shortPath, uint len);
+
+        /// <summary>The second round of the audit: autostart points that were missing, ways around the path checks, the safety of the cleaning itself (quarantine records,
+        /// changed files, folder links, interrupted cleanups, two cleanups at once) and the grading of game cheats.</summary>
+        static void AuditChecks(RulePack rules)
+        {
+            W.WriteLine("\nAudit round: more autostart points, path tricks, safe cleaning, game cheats");
+            string tmp = Path.Combine(Path.GetTempPath(), "mh_au_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(tmp);
+            string oldData = RulePack.TestDataDirOverride;
+            const string fakeRoot = @"Software\MineHunterSelfTest\Audit";
+            try
+            {
+                string payload = Path.Combine(tmp, "payload.exe"); File.WriteAllBytes(payload, new byte[] { 1, 2, 3 });
+                string dll = Path.Combine(tmp, "evil.dll"); File.WriteAllBytes(dll, new byte[] { 1, 2, 3 });
+                Registry.CurrentUser.DeleteSubKeyTree(fakeRoot, false);
+                using (var fm = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\M"))
+                using (var fu = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\U"))
+                {
+                    // ---- table-driven autostart points: every one must be found, with the data needed to remove it
+                    fu.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows").SetValue("Load", payload);
+                    fu.CreateSubKey(@"SOFTWARE\Microsoft\Command Processor").SetValue("AutoRun", "\"" + payload + "\" /q");
+                    fu.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnceEx\001").SetValue("1", payload);
+                    fm.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager").SetValue("SetupExecute", new[] { "autocheck autochk *", payload }, RegistryValueKind.MultiString);
+                    fm.CreateSubKey(@"SYSTEM\Setup").SetValue("CmdLine", payload);
+                    fm.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp").SetValue("InitialProgram", payload);
+                    fm.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Terminal Server\Wds\rdpwd").SetValue("StartupPrograms", "rdpclip");
+                    fm.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\InstalledSDB\{AAAAAAAA-0000-0000-0000-000000000001}").SetValue("DatabasePath", payload);
+                    fm.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs").SetValue("evil", dll);
+                    fm.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs").SetValue("DllDirectory", tmp);
+                    fm.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\notepad.exe").SetValue("VerifierDlls", dll);
+                    fu.CreateSubKey(@"Software\Classes\ms-settings\shell\open\command").SetValue(null, "\"" + payload + "\"");
+                    fu.CreateSubKey(@"Software\Classes\ms-settings\shell\open\command").SetValue("DelegateExecute", "");
+                    fu.CreateSubKey(@"Software\Classes\.mlabx\shell\open\command").SetValue(null, "\"" + payload + "\" \"%1\"");
+                    fu.CreateSubKey(@"Software\Classes\Vendor.Document\shell\open\command").SetValue(null, "\"" + payload + "\" \"%1\"");              // an ordinary per-user program association: not looked at
+                    fu.CreateSubKey(@"Software\Classes\exefile\shell\open\command").SetValue(null, "\"" + Path.Combine(PathUtil.System32, "notepad.exe") + "\" \"%1\"");   // overridden, but with a signed program
+                    fu.CreateSubKey(@"Software\Classes\CLSID\{BBBBBBBB-0000-0000-0000-000000000002}\ScriptletURL").SetValue(null, "script:file:///" + tmp.Replace('\\', '/') + "/x.sct");
+                    fu.CreateSubKey(@"Software\Classes\CLSID\{CCCCCCCC-0000-0000-0000-000000000003}\InprocHandler32").SetValue(null, dll);
+
+                    var cx = TestCtx(rules);
+                    var users = new List<KeyValuePair<string, RegistryKey>> { new KeyValuePair<string, RegistryKey>("HKCU", fu) };
+                    MorePersistenceScanner.RunOn(cx, fm, users);
+                    Func<string, Entity> byKey = frag => cx.Entities.Values.FirstOrDefault(e => e.Id.IndexOf(frag, StringComparison.OrdinalIgnoreCase) >= 0);
+                    Func<Entity, string, bool> removable = (e, v) => e != null && e.P("hive") != null && e.P("key") != null && e.P("value") == v;
+                    Check("autostart: the Load value of the Windows key", HasRule(byKey(@"Windows\Load"), "REG.WINDOWS_LOAD_RUN") && removable(byKey(@"Windows\Load"), "Load"));
+                    Check("autostart: cmd.exe AutoRun", HasRule(byKey(@"Command Processor\AutoRun"), "REG.CMD_AUTORUN"));
+                    Check("autostart: RunOnceEx", byKey(@"RunOnceEx\001") != null);
+                    var se = byKey("SetupExecute#1");
+                    Check("autostart: only the foreign entry of the SetupExecute list is reported, not the Windows one (and it can be removed alone)", se != null && byKey("SetupExecute#0") == null && se.P("data") == payload && HasRule(se, "REG.BOOT_EXECUTE"));
+                    Check("autostart: the Setup command line", HasRule(byKey(@"SYSTEM\Setup\CmdLine"), "REG.SETUP_CMDLINE"));
+                    Check("autostart: the Remote Desktop initial program", HasRule(byKey("InitialProgram"), "REG.RDP_INITIAL_PROGRAM"));
+                    Check("autostart: the standard rdpclip start-up program is not reported", byKey("StartupPrograms") == null);
+                    Check("autostart: an installed compatibility database", HasRule(byKey("InstalledSDB"), "REG.APPCOMPAT_SDB"));
+                    Check("autostart: a KnownDLLs entry that is not signed, and a KnownDLLs folder that is not System32", HasRule(byKey(@"KnownDLLs\evil"), "REG.KNOWNDLLS_UNTRUSTED") && HasRule(byKey(@"KnownDLLs\DllDirectory"), "REG.KNOWNDLLS_DIR"));
+                    Check("autostart: an IFEO verifier DLL", HasRule(byKey("VerifierDlls"), "REG.IFEO_VERIFIER"));
+                    var ms = byKey(@"ms-settings\shell\open\command");
+                    Check("autostart: a per-user ms-settings override (the UAC bypass) is reported strongly and carries what is needed to remove it", HasRule(ms, "REG.HANDLER_HIJACK") && ms.Evidence.First(x => x.RuleId == "REG.HANDLER_HIJACK").Weight == 35 && removable(ms, ""));
+                    Check("autostart: a per-user override for a file extension", HasRule(byKey(@".mlabx\shell"), "REG.HANDLER_HIJACK"));
+                    Check("autostart: an ordinary program association (a program's own ProgID) is not looked at", byKey("Vendor.Document") == null);
+                    Check("autostart: an override that starts a signed Windows program is not reported", byKey(@"exefile\shell") == null);
+                    Check("autostart: a per-user COM class that runs a scriptlet, and a per-user COM handler DLL", HasRule(byKey("ScriptletURL"), "REG.COM_SCRIPTLET") && byKey("InprocHandler32") != null);
+                }
+
+                // ---- a program started out of a hidden NTFS stream, and files that need an interpreter
+                var ca = TestCtx(rules);
+                string host = Path.Combine(tmp, "notes.txt"); File.WriteAllText(host, "x");
+                var ea = Persist.Evaluate(ca, "t:ads", EntityKind.RunKey, "t", "t", "\"" + host + ":payload.exe\"", "Autorun entry");
+                Check("a command that starts something inside a hidden data stream is flagged (File.Exists cannot even see such a path)", HasRule(ea, "PERSIST.ADS_TARGET"));
+                var eb = Persist.Evaluate(TestCtx(rules), "t:zone", EntityKind.RunKey, "t", "t", "\"" + host + ":Zone.Identifier\"", "Autorun entry");
+                Check("... but the Mark of the Web stream is not", !HasRule(eb, "PERSIST.ADS_TARGET"));
+                string py = Path.Combine(tmp, "run.py");
+                File.WriteAllText(py, Obf.J("xm", "rig") + " -o " + Obf.J("stra", "tum+tcp://") + "pool.example.invalid:3333 -u WALLETNOTREAL000000 -p x " + Obf.J("--don", "ate-level") + " 1 --algo " + Obf.J("rand", "omx"));
+                var cpy = TestCtx(rules);
+                Persist.Evaluate(cpy, "t:py", EntityKind.RunKey, "t", "t", "python.exe \"" + py + "\"", "Autorun entry");
+                Check("a Python script started by autostart is read and its miner command line is found", cpy.Entities.Values.Any(e => e.Kind == EntityKind.File && e.Evidence.Any(x => x.RuleId.StartsWith("SCRIPT.") || x.RuleId.StartsWith("CONTENT.MINER"))));
+                string longDir = Path.Combine(tmp, "A_Rather_Long_Folder_Name"); Directory.CreateDirectory(longDir);
+                string longFile = Path.Combine(longDir, "payload_with_long_name.exe"); File.WriteAllBytes(longFile, new byte[] { 1 });
+                string sp = ShortPath(longFile);
+                if (sp != null && sp.IndexOf('~') >= 0) Check("an 8.3 short name is resolved before the location is judged", string.Equals(PathUtil.Normalize(sp), PathUtil.Normalize(longFile), StringComparison.OrdinalIgnoreCase), PathUtil.Normalize(sp));
+                else W.WriteLine("  [skip] 8.3 short names are switched off on this volume");
+
+                // ---- scheduled task whose XML is damaged: what it runs is still read
+                string tf = Path.Combine(tmp, "Broken"); File.WriteAllText(tf, "<?xml version=\"1.0\"?><Task><Actions><Exec><Command>" + payload + "</Command><Arguments>--x</Arguments></Exec></Actions><Triggers><LogonTrigger>");
+                var cbk = TestCtx(rules); TaskScanner.One(cbk, tf, "\\Broken");
+                var tb = Find(cbk, e => e.Kind == EntityKind.Task);
+                Check("a damaged task definition is not skipped: what it runs is read as text, and the damage is reported", tb != null && HasRule(tb, "TASK.XML_UNPARSABLE") && HasRule(tb, "PERSIST.TARGET_USER_PATH"));
+
+                // ---- a service that is only a wrapper (NSSM): the program it keeps running is what counts
+                using (var fs = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\Services"))
+                {
+                    var sk = fs.CreateSubKey("FakeNssm");
+                    sk.SetValue("ImagePath", "\"" + Path.Combine(PathUtil.System32, "notepad.exe") + "\"", RegistryValueKind.ExpandString);
+                    sk.SetValue("Type", 16); sk.SetValue("Start", 2);
+                    sk.CreateSubKey("Parameters").SetValue("Application", payload);
+                    var csv = TestCtx(rules); ServiceScanner.One(csv, fs, "FakeNssm", new Dictionary<string, string>());
+                    Check("a service that wraps a program from a user folder (NSSM style) is flagged", Find(csv, e => e.Id == "svc:FakeNssm" && HasRule(e, "SVC.WRAPPED_USER_PATH")) != null);
+                }
+
+                // ---- cleaning: one list entry only, identical files, a file that changed, folder links
+                RulePack.TestDataDirOverride = Path.Combine(tmp, "data");
+                using (var tk = Registry.CurrentUser.CreateSubKey(fakeRoot + @"\Multi"))
+                {
+                    tk.SetValue("List", new[] { "autocheck autochk *", payload }, RegistryValueKind.MultiString);
+                    var re = new Entity { Id = "reg:multi", Kind = EntityKind.Registry, Title = "multi", Location = "HKCU\\x" };
+                    re.Set("hive", "HKCU"); re.Set("key", fakeRoot + @"\Multi"); re.Set("value", "List"); re.Set("data", payload);
+                    var fnd = new Finding { Id = "T2", Title = "t", Verdict = Verdict.HighRisk, Entities = new List<Entity> { re } };
+                    var stp = new List<RemediationStep> { new RemediationStep { Type = ActionType.RemoveRegistryValue, EntityId = re.Id, Target = "x", Order = 1, Description = "d" } };
+                    var o2 = RemediationEngine.Execute(TestCtx(rules), fnd, stp, null);
+                    var left = tk.GetValue("List") as string[];
+                    Check("cleaning a list value removes only the foreign entry and keeps the Windows one", o2.Results.All(r => r.Success) && left != null && left.Length == 1 && left[0] == "autocheck autochk *");
+                    var qi2 = Quarantine.List().FirstOrDefault(i => i.Type == "RegistryValue");
+                    Check("... and the whole list can be put back from the quarantine record", qi2 != null && RemediationEngine.Restore(qi2) == null && ((tk.GetValue("List") as string[]) ?? new string[0]).Length == 2);
+                }
+                byte[] same = Encoding.ASCII.GetBytes("identical content for two files");
+                string f1 = Path.Combine(tmp, "one.bin"), f2 = Path.Combine(tmp, "two.bin"); File.WriteAllBytes(f1, same); File.WriteAllBytes(f2, same);
+                string q1e, q2e; var i1 = Quarantine.StoreFile("File", f1, "t", "r", out q1e); var i2 = Quarantine.StoreFile("File", f2, "t", "r", out q2e);
+                Check("two files with identical content get two separate quarantine records (a record is never overwritten by a copy)", i1 != null && i2 != null && i1.Id != i2.Id && i1.Sha256 == i2.Sha256 && i1.Dir != i2.Dir);
+                File.Delete(f1); File.Delete(f2);
+                Check("... and both are restored byte for byte to their own places", RemediationEngine.Restore(i1) == null && RemediationEngine.Restore(i2) == null && Hashing.Sha256(f1) == Hashing.Sha256(same) && Hashing.Sha256(f2) == Hashing.Sha256(same));
+                // damaged manifest
+                string mf = Path.Combine(i1.Dir, "manifest.json"); File.WriteAllText(mf + ".bak", File.ReadAllText(mf)); File.WriteAllText(mf, "{ not json");
+                var rl = Quarantine.Load(i1.Dir);
+                Check("a damaged quarantine record falls back to the previous copy instead of becoming invisible", rl != null && rl.Id == i1.Id && rl.Sha256 == i1.Sha256);
+                Quarantine.Save(i2);
+                Check("a record is written atomically (no half-written temp file is left behind)", !File.Exists(Path.Combine(i2.Dir, "manifest.json.tmp")) && File.Exists(Path.Combine(i2.Dir, "manifest.json")));
+                // a file that changed after the scan is left alone
+                string chg = Path.Combine(tmp, "changed.exe"); File.WriteAllBytes(chg, new byte[] { 9, 9, 9, 9 });
+                string chgSha = Hashing.Sha256(chg);
+                File.WriteAllBytes(chg, new byte[] { 7, 7, 7, 7, 7 });
+                string chgErr; var ci = Quarantine.StoreFile("File", chg, "t", "r", out chgErr, chgSha);
+                Check("a file that changed since the scan is NOT quarantined (the file that was judged is the file that is removed)", ci == null && File.Exists(chg) && chgErr != null && chgErr.Contains("changed"));
+                var ce = new Entity { Id = "file:chg", Kind = EntityKind.File, Title = "changed.exe", Location = chg, Sha256 = chgSha };
+                ce.Set("size", "4");
+                var cf = new Finding { Id = "T3", Title = "t", Verdict = Verdict.HighRisk, Entities = new List<Entity> { ce } };
+                var oc3 = RemediationEngine.Execute(TestCtx(rules), cf, new List<RemediationStep> { new RemediationStep { Type = ActionType.QuarantineFile, EntityId = ce.Id, Target = chg, Order = 3, Description = "q" } }, null);
+                Check("... also through the cleaning engine: the step fails with a clear message and the file stays", oc3.Results.Count == 1 && !oc3.Results[0].Success && File.Exists(chg));
+                // folder links
+                string realDir = Path.Combine(tmp, "real"); Directory.CreateDirectory(realDir);
+                string junc = Path.Combine(tmp, "link");
+                string o; int mk = RemediationEngine.RunTool(Path.Combine(PathUtil.System32, "cmd.exe"), "/c mklink /J \"" + junc + "\" \"" + realDir + "\"", 10000, out o);
+                if (mk == 0 && Directory.Exists(junc))
+                {
+                    string viaLink = Path.Combine(junc, "restored.bin");
+                    Check("a path that goes through a junction is recognised", Fs.HasLinkedFolder(viaLink) && !Fs.HasLinkedFolder(Path.Combine(realDir, "x.bin")) && string.Equals(PathUtil.Normalize(Fs.FinalPath(junc)), PathUtil.Normalize(realDir), StringComparison.OrdinalIgnoreCase), Fs.FinalPath(junc));
+                    string qe2; var qj = Quarantine.StoreFile("File", f2, "t", "r", out qe2); File.Delete(f2);
+                    string err = Quarantine.RestoreFileTo(qj, viaLink, false);
+                    Check("restoring through a junction is refused (an administrator write must not be steered into a system folder)", err != null && err.Contains("junction") && !File.Exists(Path.Combine(realDir, "restored.bin")), err);
+                    try { Directory.Delete(junc); } catch { }
+                }
+                else W.WriteLine("  [skip] could not create a junction here");
+
+                // ---- an interrupted cleanup does not leave programs frozen; two cleanups do not run at once
+                var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(PathUtil.System32, "ping.exe"), "-n 40 127.0.0.1") { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true });
+                try
+                {
+                    System.Threading.Thread.Sleep(300);
+                    var ks = new RemediationStep { Type = ActionType.KillProcess, EntityId = "p", Target = child.Id + "|" + child.StartTime.ToUniversalTime().ToString("o"), Order = 2, Description = "k" };
+                    var frozen = RemediationEngine.FreezeProcesses(new[] { ks });
+                    System.Threading.Thread.Sleep(300);
+                    Func<bool> suspended = () => { try { child.Refresh(); return child.Threads.Cast<System.Diagnostics.ProcessThread>().All(t => t.ThreadState == System.Diagnostics.ThreadState.Wait && t.WaitReason == System.Diagnostics.ThreadWaitReason.Suspended); } catch { return false; } };
+                    bool wasFrozen = suspended();
+                    Check("a process that is about to be stopped is frozen first", frozen.Count == 1 && wasFrozen);
+                    int rec = RemediationEngine.RecoverInterrupted();       // as if MineHunter had died here and was started again
+                    System.Threading.Thread.Sleep(300);
+                    Check("a cleanup that died while processes were frozen is made good at the next start: they run again", rec == 1 && !suspended());
+                }
+                finally { try { child.Kill(); } catch { } child.Dispose(); }
+                var lk1 = RemediationEngine.CleanupLock(500);
+                bool otherGotIt = true;
+                var th = new System.Threading.Thread(() => { var x = RemediationEngine.CleanupLock(300); otherGotIt = x != null; if (x != null) x.Dispose(); });
+                th.Start(); th.Join();
+                lk1.Dispose();
+                var lk3 = RemediationEngine.CleanupLock(500);
+                Check("only one cleanup runs at a time: a second one is told to wait, and gets the lock when the first is done", lk1 != null && !otherGotIt && lk3 != null);
+                if (lk3 != null) lk3.Dispose();
+
+                // ---- game cheats: graded as Suspicious at most, never removed by default - unless something specific to miners is there as well
+                Check("the rule pack knows the game-cheat class", rules.ToolClasses.Any(t => t.Id == "TOOL.GAME_CHEAT"));
+                string cheatDir = Path.Combine(tmp, "CheatEngine"); Directory.CreateDirectory(cheatDir);
+                string cheatExe = Path.Combine(cheatDir, "cheatengine-x86_64.exe");
+                string selfExe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                File.Copy(selfExe, cheatExe, true);
+                Entity lastFe = null; List<Finding> lastBuilt = null;
+                Func<bool, Finding> graded = withMiner =>
+                {
+                    var c = TestCtx(rules);
+                    var fe = c.Files.Inspect(cheatExe, FileRole.PersistenceTarget);
+                    fe.Add(new Evidence("PE.HIGH_ENTROPY", EvidenceCategory.Content, 35, "packed", "x"));
+                    fe.Add(new Evidence("PERSIST.TARGET_USER_PATH", EvidenceCategory.Persistence, 30, "starts from a user folder", "x"));
+                    fe.Add(new Evidence("TAMPER.DEF_EXCL_USERPATH", EvidenceCategory.Tamper, 20, "excluded from Defender", "x"));
+                    if (withMiner) fe.Add(new Evidence("CONTENT.MINER.STRINGS_STRONG", EvidenceCategory.Content, 48, "miner strings", "x"));
+                    List<Entity> obs; var fl = RiskEngine.Build(c, out obs);
+                    lastFe = fe; lastBuilt = fl;
+                    return fl.FirstOrDefault(x => x.Entities.Contains(fe));
+                };
+                var gf = graded(false);
+                Check("the file name classes it as a game cheat", gf != null && gf.ToolClass == "GameCheat", lastFe == null ? "no entity" : "toolClass=" + lastFe.P("toolClass") + " score=" + lastFe.Score + " trusted=" + lastFe.Trusted + " props=" + string.Join(",", lastFe.Props.Keys) + " ev=" + string.Join(",", lastFe.Evidence.Select(x => x.RuleId)) + " findings=" + (lastBuilt == null ? -1 : lastBuilt.Count));
+                Check("a cheat with loud generic signals is graded Suspicious (Medium), not High or Critical", gf != null && gf.Verdict == Verdict.Suspicious && Loc.SeverityEn(gf.Verdict) == "Medium");
+                Check("... none of its steps is selected by default, and the recommendation says it is kept", gf != null && gf.Steps.All(s => !s.RecommendedByDefault) && gf.Recommendation.StartsWith("Kept:") && ReportWriter.StateTag(gf, null) != null);
+                var gm = graded(true);
+                Check("a cheat that also carries miner strings is a miner: the cheat class no longer protects it", gm != null && gm.ToolClass == null && gm.Verdict >= Verdict.HighRisk && gm.Steps.Any(s => s.RecommendedByDefault));
+                var pkt = new RulePack(); pkt.Merge("{\"version\":\"2026.01.01.1\"}", "base");
+                pkt.Merge("{\"version\":\"2099.01.01.1\",\"toolClasses\":[{\"id\":\"TOOL.EVIL\",\"class\":\"GameCheat\",\"regex\":\"miner\",\"text\":\"t\"}]}", "next-to-exe", true); pkt.Build();
+                Check("a rule pack next to the EXE cannot add a tool class (a miner could name itself into the list)", pkt.ToolClasses.Count == 0);
+                var fo = new Finding { Id = "T9", Title = "x", Verdict = Verdict.Malware, Score = 90 };
+                var fok = new FindingOutcome { FindingId = "T9", Verdict = "Remediated" }; var fpart = new FindingOutcome { FindingId = "T9", Verdict = "Partial" };
+                Check("the report shows the severity and what happened: \"[CRITICAL] [REMOVED]\"", ReportWriter.Badge(fo, fok).ToUpperInvariant() == "[" + Loc.Severity(Verdict.Malware).ToUpperInvariant() + "] [" + ReportWriter.StateTag(fo, fok).ToUpperInvariant() + "]" && ReportWriter.StateTag(fo, fok) == Loc.L("REMOVED", "УДАЛЕНО") && ReportWriter.StateTag(fo, fpart) == Loc.L("PARTLY REMOVED", "УДАЛЕНО ЧАСТИЧНО"));
+            }
+            catch (Exception ex) { Check("audit round checks", false, ex.ToString().Split('\n')[0] + " @ " + (ex.StackTrace ?? "").Split('\n')[0].Trim()); }
+            finally
+            {
+                RulePack.TestDataDirOverride = oldData;
+                try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\MineHunterSelfTest", false); } catch { }
+                try { foreach (var d in Directory.GetDirectories(tmp)) { try { if ((File.GetAttributes(d) & FileAttributes.ReparsePoint) != 0) Directory.Delete(d); } catch { } } Directory.Delete(tmp, true); } catch { }
+            }
+        }
+
         public static int Run(TextWriter w)
         {
             W = w; passed = failed = 0;
@@ -394,6 +617,7 @@ namespace MineHunter
             SelfProtectionChecks();
 
             DetectionChecks(rules);
+            AuditChecks(rules);
 
             w.WriteLine("\nRisk engine calibration (false-positive safety)");
             Check("unsigned + temp + high CPU alone stays Clean/low", V(Ent(EntityKind.File, "a", E("SIG.UNSIGNED", EvidenceCategory.Signature, 6), E("LOC.TEMP", EvidenceCategory.Location, 6), E("BEH.CPU_SUSTAINED", EvidenceCategory.Behavior, 10))) == Verdict.Clean);

@@ -109,10 +109,11 @@ namespace MinerLab
 
         static byte[] MemMarkers(string blob, bool writeConfig)
         {
-            string proto = J("stra", "tum+tcp://"), alg = J("rand", "omx"), prog = J("xm", "rig"), alg2 = J("crypto", "night"), sub = J("mining.", "subscribe");
-            // "full": protocol + algorithms + program name (what the detector must flag); "few": only two words, like an article or a log that merely mentions mining (must NOT be flagged)
-            string text = blob == "few" ? (prog + " " + alg + " MINERLAB_TEST_MEMORY_FEW")
-                                        : (proto + "127.0.0.1:3333 " + alg + " " + prog + " " + alg2 + " " + sub + " MINERLAB_TEST_MEMORY_MARKERS");
+            // "full": protocol + algorithms + program name (what the detector must flag); "few": only two words, like an article or a log that merely mentions mining (must NOT be flagged).
+            // The pieces are built only inside the branch that needs them: a string built and thrown away still sits in the managed heap and would be found in memory.
+            string text;
+            if (blob == "few") text = J("xm", "rig") + " " + J("rand", "omx") + " MINERLAB_TEST_MEMORY_FEW";
+            else text = J("stra", "tum+tcp://") + "127.0.0.1:3333 " + J("rand", "omx") + " " + J("xm", "rig") + " " + J("crypto", "night") + " " + J("mining.", "subscribe") + " MINERLAB_TEST_MEMORY_MARKERS";
             if (writeConfig)
             {
                 string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");

@@ -11,6 +11,7 @@ using Microsoft.Win32;
 using MineHunter.Model;
 using MineHunter.Native;
 using MineHunter.Risk;
+using MineHunter.Rules;
 using MineHunter.Scanning;
 using MineHunter.Util;
 
@@ -129,25 +130,87 @@ namespace MineHunter.Remediation
             Action<string> L = m => { Log.Info(m); if (log != null) log(m); };
 
             // 0. freeze every targeted process first so that a watchdog cannot respawn things while we clean
-            var frozen = new List<int>();
+            var frozen = FreezeProcesses(steps, L);
+            try
+            {
+                foreach (var s in steps)
+                {
+                    Entity e; byId.TryGetValue(s.EntityId, out e);
+                    var r = new StepResult { Step = s };
+                    try { Do(ctx, f, s, e, r, L); }
+                    catch (Exception ex) { r.Success = false; r.Message = "unexpected error: " + ex.Message; }
+                    L((r.Success ? "[OK] " : "[FAILED] ") + s.Description + (string.IsNullOrEmpty(r.Message) ? "" : " - " + r.Message));
+                    outcome.Results.Add(r);
+                }
+            }
+            finally { ResumeProcesses(frozen); }       // anything still alive but not killed is released again
+            return outcome;
+        }
+
+        // ------------------------------------------------------------------------------------------ freezing, with a journal so that a crash cannot leave a program frozen forever
+        static string JournalPath { get { return Path.Combine(RulePack.DataDir, "frozen.journal"); } }
+
+        /// <summary>Suspends the processes the steps are going to kill. The list is written to disk first: if MineHunter itself dies before it resumes them, the next start does it.</summary>
+        public static List<int> FreezeProcesses(IEnumerable<RemediationStep> steps, Action<string> L = null)
+        {
+            var frozen = new List<int>(); var journal = new List<string>();
             foreach (var s in steps.Where(x => x.Type == ActionType.KillProcess))
             {
                 int pid; DateTime start;
                 if (!ParseProc(s.Target, out pid, out start) || !SameProcess(pid, start)) continue;
-                if (SystemOps.Suspend(pid)) { frozen.Add(pid); L("suspended PID " + pid); }
+                try { using (var p = Process.GetProcessById(pid)) journal.Add(pid + "|" + p.StartTime.ToUniversalTime().ToString("o")); } catch { continue; }
+                try { Directory.CreateDirectory(RulePack.DataDir); File.AppendAllLines(JournalPath, new[] { journal[journal.Count - 1] }); } catch { }
+                if (SystemOps.Suspend(pid)) { frozen.Add(pid); if (L != null) L("suspended PID " + pid); }
             }
+            return frozen;
+        }
 
-            foreach (var s in steps)
+        public static void ResumeProcesses(IEnumerable<int> frozen)
+        {
+            foreach (var pid in frozen) { try { using (var p = Process.GetProcessById(pid)) { if (!p.HasExited) SystemOps.Resume(pid); } } catch { } }
+            try { File.Delete(JournalPath); } catch { }
+        }
+
+        /// <summary>Called at start-up: a previous cleanup that was killed or lost power may have left programs suspended. Resumes those that are still the same process.</summary>
+        public static int RecoverInterrupted()
+        {
+            int n = 0;
+            try
             {
-                Entity e; byId.TryGetValue(s.EntityId, out e);
-                var r = new StepResult { Step = s };
-                try { Do(ctx, f, s, e, r, L); }
-                catch (Exception ex) { r.Success = false; r.Message = "unexpected error: " + ex.Message; }
-                L((r.Success ? "[OK] " : "[FAILED] ") + s.Description + (string.IsNullOrEmpty(r.Message) ? "" : " - " + r.Message));
-                outcome.Results.Add(r);
+                if (!File.Exists(JournalPath)) return 0;
+                foreach (var line in File.ReadAllLines(JournalPath))
+                {
+                    var parts = line.Split('|'); int pid; DateTime st;
+                    if (parts.Length < 2 || !int.TryParse(parts[0], out pid) || !DateTime.TryParse(parts[1], null, System.Globalization.DateTimeStyles.RoundtripKind, out st)) continue;
+                    if (SameProcess(pid, st) && SystemOps.Resume(pid)) { n++; Log.Info("resumed PID " + pid + ", frozen by an interrupted cleanup"); }
+                }
+                File.Delete(JournalPath);
             }
-            foreach (var pid in frozen) { try { using (var p = Process.GetProcessById(pid)) { if (!p.HasExited) SystemOps.Resume(pid); } } catch { } }   // anything still alive but not killed is released again
-            return outcome;
+            catch { }
+            return n;
+        }
+
+        // ------------------------------------------------------------------------------------------ one cleanup at a time on the whole computer
+        /// <summary>Two cleanups at once (a window and a command line, or two command lines) would race on the same files and quarantine. Returns null when another one is running.</summary>
+        public static IDisposable CleanupLock(int timeoutMs = 20000)
+        {
+            System.Threading.Mutex m = null;
+            try
+            {
+                m = new System.Threading.Mutex(false, @"Global\MineHunter.Cleanup");
+                bool got;
+                try { got = m.WaitOne(timeoutMs); } catch (System.Threading.AbandonedMutexException) { got = true; }       // the previous owner died: the lock is ours
+                if (!got) { m.Dispose(); return null; }
+                return new CleanupToken(m);
+            }
+            catch { if (m != null) m.Dispose(); return new CleanupToken(null); }       // no mutex available (restricted environment): do not block the cleanup
+        }
+
+        sealed class CleanupToken : IDisposable
+        {
+            readonly System.Threading.Mutex m;
+            public CleanupToken(System.Threading.Mutex m) { this.m = m; }
+            public void Dispose() { if (m != null) { try { m.ReleaseMutex(); } catch { } m.Dispose(); } }
         }
 
         static bool ParseProc(string t, out int pid, out DateTime start)
@@ -234,9 +297,19 @@ namespace MineHunter.Remediation
             string path = s.Target;
             if (!File.Exists(path)) { r.Success = true; r.Message = "already gone"; return; }
             if (e != null && Decision.IsProtectedFile(null, e)) { r.Message = "trusted/system file - refused"; return; }
+            // a path that goes through a junction or symbolic link may lead into a system folder: judge the real location, and act on it
+            if (Fs.HasLinkedFolder(path))
+            {
+                string real = Fs.FinalPath(path);
+                if (real == null) { r.Message = "the path goes through a folder link that cannot be resolved - left untouched"; return; }
+                var rc = PathUtil.Classify(real);
+                if (rc == PathClass.WindowsSystem || rc == PathClass.WindowsOther || rc == PathClass.ProgramFiles) { r.Message = "the path goes through a folder link into " + real + " (a protected folder) - refused"; return; }
+                path = real;
+            }
             string err;
             string type = s.Type == ActionType.RemoveStartupItem ? "StartupItem" : "File";
-            var it = Quarantine.StoreFile(type, path, f.Title, string.Join("; ", f.TopEvidence.Take(3).Select(x => x.Text)), out err);
+            string expected = e != null && e.P("size") != null ? e.Sha256 : null;       // the hash taken when the file was scanned (not every scanned file has one)
+            var it = Quarantine.StoreFile(type, path, f.Title, string.Join("; ", f.TopEvidence.Take(3).Select(x => x.Text)), out err, expected);
             if (it == null) { r.Message = "could not make a safe copy first (" + err + ") - the file was left untouched"; return; }
             r.QuarantineId = it.Id;
             try { File.SetAttributes(path, FileAttributes.Normal); } catch { }
@@ -348,8 +421,12 @@ namespace MineHunter.Remediation
                 else if ((value == "Authentication Packages" || value == "Notification Packages" || value == "Security Packages") && old is string[])
                     k.SetValue(value, ((string[])old).Where(x => !string.Equals(x.Trim().Trim('"'), e.P("data"), StringComparison.OrdinalIgnoreCase)).ToArray(), RegistryValueKind.MultiString);
                 else if (value == "AppInit_DLLs") { k.SetValue(value, "", RegistryValueKind.String); try { k.SetValue("LoadAppInit_DLLs", 0, RegistryValueKind.DWord); } catch { } }
-                else if (kind == RegistryValueKind.MultiString && e.P("data") != null && old is string[] && value == "BootExecute")
-                    k.SetValue(value, ((string[])old).Where(x => x.Trim() != e.P("data")).ToArray(), RegistryValueKind.MultiString);
+                else if (kind == RegistryValueKind.MultiString && e.P("data") != null && old is string[])
+                {
+                    // one entry of a list (BootExecute, SetupExecute ...): only that entry goes, the Windows ones stay
+                    var rest = ((string[])old).Where(x => !string.Equals(x.Trim(), e.P("data"), StringComparison.OrdinalIgnoreCase)).ToArray();
+                    if (rest.Length == 0) k.DeleteValue(value, false); else k.SetValue(value, rest, RegistryValueKind.MultiString);
+                }
                 else k.DeleteValue(value, false);
                 r.Success = true; r.Message = "changed (saved as quarantine item " + it.Id + ")";
             }
@@ -384,8 +461,10 @@ namespace MineHunter.Remediation
         {
             if (e == null) { r.Message = "entity missing"; return; }
             string cls = e.P("wmiClass"), cname = e.P("consumer"), fname = e.P("filter");
-            var scope = new ManagementScope(@"\\.\root\subscription"); scope.Connect();
-            var rec = new Dictionary<string, object> { { "consumerClass", cls }, { "consumerName", cname }, { "filterName", fname } };
+            string ns = e.P("wmiNamespace") ?? @"root\subscription";
+            if (!Regex.IsMatch(ns, @"^root(\\[A-Za-z0-9_]+)*$")) { r.Message = "unexpected WMI namespace"; return; }
+            var scope = new ManagementScope(@"\\.\" + ns); scope.Connect();
+            var rec = new Dictionary<string, object> { { "consumerClass", cls }, { "consumerName", cname }, { "filterName", fname }, { "namespace", ns } };
             ManagementObject consumer = null, filter = null;
             using (var q = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM " + cls + " WHERE Name='" + cname.Replace("'", "''") + "'"))) foreach (ManagementObject o in q.Get()) { consumer = o; break; }
             if (!string.IsNullOrEmpty(fname))
@@ -596,7 +675,9 @@ namespace MineHunter.Remediation
 
         static string RestoreWmi(QuarantineItem it)
         {
-            var scope = new ManagementScope(@"\\.\root\subscription"); scope.Connect();
+            string ns = it.Extra.ContainsKey("namespace") ? Convert.ToString(it.Extra["namespace"]) : @"root\subscription";
+            if (!Regex.IsMatch(ns, @"^root(\\[A-Za-z0-9_]+)*$")) return "unexpected WMI namespace";
+            var scope = new ManagementScope(@"\\.\" + ns); scope.Connect();
             string cls = Convert.ToString(it.Extra["consumerClass"]);
             Func<string, Dictionary<string, object>, ManagementObject> make = (c, props) =>
             {

@@ -58,7 +58,8 @@ namespace MineHunter
                 { "created", it.Created }, { "findingTitle", it.FindingTitle }, { "reason", it.Reason }, { "key", it.Key }, { "machine", it.Machine },
                 { "payloadFile", it.PayloadFile }, { "restorable", it.Restorable }, { "extra", it.Extra }, { "restoreNote", it.RestoreNote }
             };
-            File.WriteAllText(Manifest(it.Dir), Json.Pretty(Json.Serialize(d)), Encoding.UTF8);
+            // flushed to disk and swapped in atomically: a power cut right after a registry value was deleted must not leave an unreadable backup
+            Fs.WriteDurable(Manifest(it.Dir), new UTF8Encoding(true).GetPreamble().Concat(Encoding.UTF8.GetBytes(Json.Pretty(Json.Serialize(d)))).ToArray());
         }
 
         public static QuarantineItem Load(string dir)
@@ -66,8 +67,14 @@ namespace MineHunter
             try
             {
                 string mf = Manifest(dir);
-                if (!File.Exists(mf)) return null;
-                var d = Json.Obj(Json.Parse(File.ReadAllText(mf, Encoding.UTF8)));
+                // a damaged manifest falls back to the previous copy that the atomic write keeps next to it
+                Dictionary<string, object> d = null;
+                foreach (var cand in new[] { mf, mf + ".bak" })
+                {
+                    if (!File.Exists(cand)) continue;
+                    try { d = Json.Obj(Json.Parse(File.ReadAllText(cand, Encoding.UTF8))); if (d != null && Json.Str(d, "id") != null) break; d = null; } catch { d = null; }
+                }
+                if (d == null) return null;
                 var it = new QuarantineItem
                 {
                     Id = Json.Str(d, "id"), Type = Json.Str(d, "type"), Title = Json.Str(d, "title"), OriginalPath = Json.Str(d, "originalPath"), Sha256 = Json.Str(d, "sha256"),
@@ -94,12 +101,20 @@ namespace MineHunter
         }
 
         /// <summary>Stores raw bytes (obfuscated) and returns the item with SHA-256 filled in. Verifies by reading the payload back.</summary>
-        public static QuarantineItem StoreFile(string type, string path, string findingTitle, string reason, out string error)
+        public static QuarantineItem StoreFile(string type, string path, string findingTitle, string reason, out string error, string expectedSha256 = null)
         {
             error = null;
             QuarantineItem it = null;
             try
             {
+                // a copy needs room: refuse early instead of filling the disk half way
+                try
+                {
+                    long need = new FileInfo(path).Length + 64L * 1024 * 1024;
+                    var drive = new DriveInfo(Path.GetPathRoot(Root));
+                    if (drive.AvailableFreeSpace < need) { error = "not enough free space on " + drive.Name + " for a safe copy (" + (need / (1024 * 1024)) + " MB needed)"; return null; }
+                }
+                catch { }
                 it = NewItem(type, Path.GetFileName(path), path, findingTitle, reason);
                 byte[] key = NewKey(); it.Key = Convert.ToBase64String(key);
                 it.PayloadFile = "payload.mhq";
@@ -120,6 +135,9 @@ namespace MineHunter
                     h.TransformFinalBlock(new byte[0], 0, 0);
                     sha = Hashing.Hex(h.Hash);
                 }
+                // the file that was scanned must be the file that is removed: if it changed in between (replaced by a program or by the user) nothing is touched
+                if (!string.IsNullOrEmpty(expectedSha256) && !string.Equals(expectedSha256, sha, StringComparison.OrdinalIgnoreCase))
+                { error = "the file changed after it was scanned (SHA-256 differs); it was left alone - scan again"; try { Directory.Delete(it.Dir, true); } catch { } return null; }
                 it.Sha256 = sha; it.Size = total;
                 try { it.Extra["attributes"] = (int)File.GetAttributes(path); it.Extra["mtimeUtc"] = File.GetLastWriteTimeUtc(path).ToString("o"); } catch { }
                 // verify what we stored
@@ -192,6 +210,8 @@ namespace MineHunter
                 string check = ReadSha256(it);
                 if (check != it.Sha256) return "the stored copy is damaged (SHA-256 mismatch) - refusing to restore";
                 if (File.Exists(target) && !overwrite) return "a file already exists at " + target;
+                // writing through a junction/symlink with administrator rights could land in a system folder: restore elsewhere with --to instead
+                if (Fs.HasLinkedFolder(target)) return "a folder on the way to " + target + " is a junction or symbolic link; restoring through it is refused (restore to another folder with --to)";
                 Directory.CreateDirectory(Path.GetDirectoryName(target));
                 var key = Convert.FromBase64String(it.Key);
                 using (var src = File.OpenRead(Path.Combine(it.Dir, it.PayloadFile)))

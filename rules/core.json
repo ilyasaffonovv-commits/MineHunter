@@ -131,6 +131,16 @@
   "browserRiskyPermissions": ["<all_urls>", "webRequestBlocking", "proxy", "nativeMessaging", "debugger", "management", "cookies", "history", "downloads", "clipboardRead", "declarativeNetRequest"],
   "browserLaunchFlagsRisky": ["--load-extension", "--proxy-server", "--proxy-pac-url", "--disable-web-security", "--remote-debugging-port", "--disable-extensions-except", "--no-sandbox", "--disable-site-isolation-trials", "--host-rules"],
 
+  "toolClasses": [
+    {
+      "id": "TOOL.GAME_CHEAT",
+      "class": "GameCheat",
+      "regex": "(cheat[ _\\-]?engine|cheatengine|wemod|art[ _\\-]?money|extreme[ _\\-]?injector|xenos(64|32)?\\b|kdmapper|aim[ _\\-]?bot|wall[ _\\-]?hack|trigger[ _\\-]?bot|no[ _\\-]?recoil|hwid[ _\\-]?spoofer|unlock[ _\\-]?all|\\btrainer\\b|\\bcheats?\\b|game[ _\\-]?hacks?\\b|skin[ _\\-]?changer|\\bbhop\\b)",
+      "text": "The name of this file, its folder or its version info is that of a game cheat or game hacking tool",
+      "textRu": "Имя файла, его папки или сведения о версии указывают на игровой чит или утилиту для взлома игр"
+    }
+  ],
+
   "vulnerableDrivers": {
     "names": ["winring0", "winring0x64", "inpoutx64", "asio", "phymem", "rtcore64", "gdrv", "cpuz", "speedfan", "atillk64", "truesight", "zamguard", "zamguard64", "zam64", "dbutil_2_3"],
     "note": "Signed but vulnerable drivers abused by miners (e.g. WinRing0 for MSR access) and by BYOVD attacks. Also used by legitimate hardware-monitor tools, therefore only a weak indicator alone."

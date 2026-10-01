@@ -694,29 +694,40 @@ namespace MineHunter.Gui
             _cts = new CancellationTokenSource(); var ct = _cts.Token;
             Task.Run(() =>
             {
-                var outcomes = new List<FindingOutcome>();
-                if (_cfg.CreateRestorePoint)
+                // one cleanup at a time on the whole computer (a command-line --fix or a second window would race on the same files)
+                using (var cleanLock = RemediationEngine.CleanupLock())
                 {
-                    Ui(() => ProgText.Text = L("Asking Windows for a restore point…", "Прошу Windows создать точку восстановления…"));
-                    Log.Info("Restore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + plan.Count + " finding(s)"));
+                    if (cleanLock == null) throw new InvalidOperationException(L("Another MineHunter is cleaning this computer right now. Nothing was changed.", "Другой MineHunter сейчас лечит этот компьютер. Ничего не изменено."));
+                    var outcomes = new List<FindingOutcome>();
+                    if (_cfg.CreateRestorePoint)
+                    {
+                        Ui(() => ProgText.Text = L("Asking Windows for a restore point…", "Прошу Windows создать точку восстановления…"));
+                        Log.Info("Restore point: " + SafetyNet.TryCreateRestorePoint("MineHunter: cleaning " + plan.Count + " finding(s)"));
+                    }
+                    // every process that is going to be stopped is frozen first, so that a second program of the same infection cannot put things back meanwhile
+                    var frozenAll = RemediationEngine.FreezeProcesses(plan.SelectMany(kv => kv.Value), m => Log.Info("   " + m));
+                    try
+                    {
+                        foreach (var kv in plan)
+                        {
+                            Ui(() => ProgText.Text = Loc.Title(kv.Key.Title));
+                            var oc = RemediationEngine.Execute(ctx, kv.Key, kv.Value, m => Log.Info("   " + m));
+                            outcomes.Add(new FindingOutcome { FindingId = kv.Key.Id, Outcome = oc });
+                        }
+                    }
+                    finally { RemediationEngine.ResumeProcesses(frozenAll); }
+                    Ui(() => { SetHero("⟳", Res("Accent"), L("Checking the result…", "Проверяю результат…"), L("A new quick scan confirms the result.", "Новая быстрая проверка подтверждает результат.")); ProgText.Text = ""; });
+                    var re = Verifier.Rescan(opt, oldRes.Findings, outcomes, ct, (s, p) => Ui(() => { Prog.Value = p; ProgText.Text = Loc.Progress(s); }));
+                    string rep = null; try { rep = ReportWriter.Write(oldRes, outcomes, ReportWriter.DefaultDir); } catch { }
+                    return Tuple.Create(outcomes, re, rep);
                 }
-                foreach (var kv in plan)
-                {
-                    Ui(() => ProgText.Text = Loc.Title(kv.Key.Title));
-                    var oc = RemediationEngine.Execute(ctx, kv.Key, kv.Value, m => Log.Info("   " + m));
-                    outcomes.Add(new FindingOutcome { FindingId = kv.Key.Id, Outcome = oc });
-                }
-                Ui(() => { SetHero("⟳", Res("Accent"), L("Checking the result…", "Проверяю результат…"), L("A new quick scan confirms the result.", "Новая быстрая проверка подтверждает результат.")); ProgText.Text = ""; });
-                var re = Verifier.Rescan(opt, oldRes.Findings, outcomes, ct, (s, p) => Ui(() => { Prog.Value = p; ProgText.Text = Loc.Progress(s); }));
-                string rep = null; try { rep = ReportWriter.Write(oldRes, outcomes, ReportWriter.DefaultDir); } catch { }
-                return Tuple.Create(outcomes, re, rep);
             }).ContinueWith(t => Ui(() =>
             {
                 SetBusy(Mode.Idle);
                 if (t.IsFaulted) { Log.Error(t.Exception.GetBaseException().ToString()); SetHero("!", Res("Bad"), L("Cleanup failed", "Не удалось обезвредить"), t.Exception.GetBaseException().Message); return; }
                 var outcomes = t.Result.Item1; _res = t.Result.Item2; if (t.Result.Item3 != null) _lastReportTxt = t.Result.Item3;
                 _cleanup = outcomes.Select(o => new CleanupRow { F = oldRes.Findings.First(x => x.Id == o.FindingId), Outcome = o }).ToList();
-                foreach (var c in _cleanup) Log.Info("Cleanup " + Loc.Title(c.F.Title) + ": " + c.Outcome.Verdict + " — " + Loc.RescanNote(c.Outcome.RescanNote));
+                foreach (var c in _cleanup) Log.Info("Cleanup " + ReportWriter.Badge(c.F, c.Outcome) + " " + Loc.Title(c.F.Title) + ": " + c.Outcome.Verdict + " — " + Loc.RescanNote(c.Outcome.RescanNote));
                 RefreshStatus(); RenderHeroFromResult(); PopulateResults(); ShowCleanup();
                 bool reboot = outcomes.Any(o => o.Outcome != null && o.Outcome.RebootRequired);
                 bool allOk = outcomes.All(o => o.Verdict == "Remediated" || o.Verdict == "RebootRequired");

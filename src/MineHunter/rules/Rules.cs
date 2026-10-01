@@ -15,6 +15,7 @@ namespace MineHunter.Rules
         public string Id, Category, Text, Version; public Regex Rx; public int Weight; public bool Definitive; public string[] Match = new string[0], NoMatch = new string[0];
     }
     public sealed class NameRule { public string Id, Text, Version; public Regex Rx; public int Weight; public string[] Match = new string[0], NoMatch = new string[0]; }
+    public sealed class ToolRule { public string Id, Class, Text, Version; public Regex Rx; }
     public sealed class TaskFolderRule { public string Id, Folder, Text, Version; public HashSet<string> Allowed; public int Weight; }
 
     /// <summary>All detection data. Loaded from embedded defaults + rules folders; lists are unions, so packs only ever add knowledge.</summary>
@@ -47,6 +48,8 @@ namespace MineHunter.Rules
         public readonly List<string> DefenderExt = new List<string>();
         public readonly List<Regex> DefenderPathDanger = new List<Regex>();
         public readonly List<NameRule> NameRules = new List<NameRule>();
+        /// <summary>Names (file, folder, version info) of game cheats and similar user-installed tools: they set off the same signals as malware but are not a miner.</summary>
+        public readonly List<ToolRule> ToolClasses = new List<ToolRule>();
         public readonly List<NameRule> IocPaths = new List<NameRule>();
         public readonly List<TaskFolderRule> TaskFolderRules = new List<TaskFolderRule>();
         public readonly HashSet<string> VulnerableDrivers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -188,6 +191,18 @@ namespace MineHunter.Rules
             AddAll(BrowserSearchHosts, Json.Strs(root, "browserSearchHosts"));
             AddAll(BrowserRiskyPermissions, Json.Strs(root, "browserRiskyPermissions"));
             AddAll(BrowserLaunchFlagsRisky, Json.Strs(root, "browserLaunchFlagsRisky"));
+            if (!restricted)
+            {
+                var tcs = Json.Arr(root.ContainsKey("toolClasses") ? root["toolClasses"] : null);
+                if (tcs != null)
+                    foreach (var o in tcs)
+                    {
+                        var d = Json.Obj(o); if (d == null) continue;
+                        string id = Json.Str(d, "id"); if (string.IsNullOrEmpty(id) || ToolClasses.Any(x => x.Id == id)) continue;
+                        try { ToolClasses.Add(new ToolRule { Id = id, Class = Json.Str(d, "class", "GameCheat"), Version = _packVersion, Rx = Rx(Json.Str(d, "regex")), Text = Json.Str(d, "text", id) }); Loc.RegisterRuleText(id, Json.Str(d, "textRu")); }
+                        catch (Exception ex) { Log.Warn("bad regex in tool class " + id + ": " + ex.Message); }
+                    }
+            }
 
             var dd = Json.Obj(root.ContainsKey("defenderExclusionDanger") ? root["defenderExclusionDanger"] : null);
             if (dd != null)

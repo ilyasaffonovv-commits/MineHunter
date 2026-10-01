@@ -100,6 +100,7 @@ namespace MineHunter.Model
         public string Recommendation;
         public string WhyNotHigher;                               // shown when the corroboration gate capped the verdict
         public string RemediationOutcome;                         // filled after neutralisation + rescan
+        public string ToolClass;                                  // "GameCheat": user software that looks alarming but is not a miner or malware; never removed by default
     }
 
     public sealed class BlindSpot
