@@ -224,6 +224,13 @@ namespace MineHunter.Risk
                 }
             }
 
+            // 1a. a scheduled task's COM handler action resolved to a per-user (HKCU) COM registration found by the registry scanner: one finding, not two
+            foreach (var t in ents.Where(e => e.Kind == EntityKind.Task && e.P("comRegId") != null))
+            {
+                Entity reg;
+                if (byId.TryGetValue(t.P("comRegId"), out reg)) links.Add(new Link(t.Id, reg.Id, "uses"));
+            }
+
             // 1b. a background CPU hog whose program also starts itself automatically (miner-like combination)
             foreach (var p in ents.Where(e => e.Kind == EntityKind.Process && e.Evidence.Any(x => x.RuleId == "BEH.CPU_SUSTAINED")))
             {

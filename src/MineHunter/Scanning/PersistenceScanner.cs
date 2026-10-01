@@ -701,6 +701,29 @@ namespace MineHunter.Scanning
                     if (!string.IsNullOrEmpty(iv)) { try { repeat.Add(System.Xml.XmlConvert.ToTimeSpan(iv)); } catch { } }
                 }
 
+            bool nsMs = taskPath.StartsWith(@"\Microsoft\", StringComparison.OrdinalIgnoreCase);
+
+            // shared by every action kind: name-based IOC, hidden/highest/repeat/namespace signals once we know what the task runs
+            Action<Entity, string> addCommonSignals = (ev, exe) =>
+            {
+                foreach (var r in ctx.Rules.TaskFolderRules)
+                    if (folder.Equals(r.Folder, StringComparison.OrdinalIgnoreCase) && !r.Allowed.Contains(name))
+                        ev.Add(new Evidence(r.Id, EvidenceCategory.Reputation, r.Weight, r.Text, taskPath));
+
+                Entity target = null;
+                try { if (exe != null && File.Exists(exe)) target = ctx.Files.Inspect(exe, FileRole.PersistenceTarget); } catch { }
+                bool untrustedTarget = target != null && !target.Trusted;
+                if (nsMs && untrustedTarget)
+                    ev.Add(new Evidence("TASK.MS_NAMESPACE_UNTRUSTED", EvidenceCategory.Masquerade, 25, "Task hides inside \\Microsoft\\... but runs a program that is not signed by Microsoft", taskPath));
+                if (untrustedTarget && PathUtil.IsUserWritable(exe))
+                {
+                    if (hidden) ev.Add(new Evidence("TASK.HIDDEN", EvidenceCategory.Persistence, 8, "Hidden task (not shown in Task Scheduler by default)", taskPath));
+                    if (string.Equals(runLevel, "HighestAvailable", StringComparison.OrdinalIgnoreCase)) ev.Add(new Evidence("TASK.HIGHEST", EvidenceCategory.Persistence, 8, "Runs with the highest privileges from a user-writable folder", taskPath));
+                    if (repeat.Any(r => r > TimeSpan.Zero && r <= TimeSpan.FromMinutes(10))) ev.Add(new Evidence("TASK.REPEAT_SHORT", EvidenceCategory.Persistence, 8, "Re-runs every few minutes (respawn / watchdog pattern)", string.Join(",", repeat.Select(r => r.TotalMinutes + "min"))));
+                    if (trigTypes.Distinct().Count() >= 2) ev.Add(new Evidence("TASK.MULTI_TRIGGER", EvidenceCategory.Persistence, 3, "Several different triggers (boot + logon + timer)", string.Join(",", trigTypes)));
+                }
+            };
+
             foreach (var ex in actions.Elements(Ns + "Exec"))
             {
                 string cmd = Txt(ex, "Command"); string args = Txt(ex, "Arguments");
@@ -708,34 +731,68 @@ namespace MineHunter.Scanning
                 string full = cmd.Trim() + (string.IsNullOrWhiteSpace(args) ? "" : " " + args.Trim());
                 if (!cmd.Trim().StartsWith("\"") && cmd.Contains(" ") && !string.IsNullOrWhiteSpace(args)) full = "\"" + cmd.Trim() + "\" " + args.Trim();
                 string id = "task:" + taskPath.ToLowerInvariant();
-                var e = Persist.Evaluate(ctx, id, EntityKind.Task, name, taskPath, full, "Scheduled task", ev =>
-                {
-                    // name-based knowledge
-                    foreach (var r in ctx.Rules.TaskFolderRules)
-                        if (folder.Equals(r.Folder, StringComparison.OrdinalIgnoreCase) && !r.Allowed.Contains(name))
-                            ev.Add(new Evidence(r.Id, EvidenceCategory.Reputation, r.Weight, r.Text, taskPath));
-
-                    bool nsMs = taskPath.StartsWith(@"\Microsoft\", StringComparison.OrdinalIgnoreCase);
-                    string exe = PathUtil.ResolveCommand(cmd);
-                    Entity target = null;
-                    try { if (exe != null && File.Exists(exe)) target = ctx.Files.Inspect(exe, FileRole.PersistenceTarget); } catch { }
-                    bool untrustedTarget = target != null && !target.Trusted;
-                    if (nsMs && untrustedTarget)
-                        ev.Add(new Evidence("TASK.MS_NAMESPACE_UNTRUSTED", EvidenceCategory.Masquerade, 25, "Task hides inside \\Microsoft\\... but runs a program that is not signed by Microsoft", taskPath));
-                    if (untrustedTarget && PathUtil.IsUserWritable(exe))
-                    {
-                        if (hidden) ev.Add(new Evidence("TASK.HIDDEN", EvidenceCategory.Persistence, 8, "Hidden task (not shown in Task Scheduler by default)", taskPath));
-                        if (string.Equals(runLevel, "HighestAvailable", StringComparison.OrdinalIgnoreCase)) ev.Add(new Evidence("TASK.HIGHEST", EvidenceCategory.Persistence, 8, "Runs with the highest privileges from a user-writable folder", taskPath));
-                        if (repeat.Any(r => r > TimeSpan.Zero && r <= TimeSpan.FromMinutes(10))) ev.Add(new Evidence("TASK.REPEAT_SHORT", EvidenceCategory.Persistence, 8, "Re-runs every few minutes (respawn / watchdog pattern)", string.Join(",", repeat.Select(r => r.TotalMinutes + "min"))));
-                        if (trigTypes.Distinct().Count() >= 2) ev.Add(new Evidence("TASK.MULTI_TRIGGER", EvidenceCategory.Persistence, 3, "Several different triggers (boot + logon + timer)", string.Join(",", trigTypes)));
-                    }
-                });
+                var e = Persist.Evaluate(ctx, id, EntityKind.Task, name, taskPath, full, "Scheduled task", ev => addCommonSignals(ev, PathUtil.ResolveCommand(cmd)));
                 if (e != null)
                 {
                     e.Set("taskPath", taskPath); e.Set("enabled", enabled.ToString()); e.Set("hidden", hidden.ToString()); e.Set("runLevel", runLevel); e.Set("author", author);
                     e.Set("triggers", string.Join(",", trigTypes)); e.Set("xmlFile", file);
                 }
             }
+
+            // COM handler actions run a registered COM class instead of a command line (fileless persistence: no Exec entry to look for).
+            // The class is usually registered machine-wide by an installer; a class that resolves only per-user (HKCU) is how COM hijacking is done without admin rights.
+            foreach (var ch in actions.Elements(Ns + "ComHandler"))
+            {
+                string clsid = (Txt(ch, "ClassId") ?? "").Trim();
+                string data = Txt(ch, "Data");
+                if (clsid.Length == 0) continue;
+                string hive, srv, impl = ResolveComClass(clsid, out hive, out srv);
+                string full = (impl ?? clsid) + (string.IsNullOrWhiteSpace(data) ? "" : " " + data.Trim());
+                string id = "task:" + taskPath.ToLowerInvariant() + ":com";
+                var e = Persist.Evaluate(ctx, id, EntityKind.Task, name, taskPath, full, "Scheduled task (COM handler)", ev =>
+                {
+                    addCommonSignals(ev, impl != null ? PathUtil.ExtractExecutable(impl) ?? impl : null);
+                    if (impl == null)
+                    {
+                        if (hidden || nsMs) ev.Add(new Evidence("TASK.COMHANDLER_UNRESOLVED", EvidenceCategory.Masquerade, 6, "COM handler task action points to a class id with no registered implementation", clsid));
+                    }
+                    else if (hive == "HKCU")
+                        ev.Add(new Evidence("TASK.COMHANDLER_HKCU", EvidenceCategory.Masquerade, 20, "The COM class this task runs is registered per-user (HKCU) rather than machine-wide - a common way to hijack a COM handler without administrator rights", clsid));
+                });
+                if (e != null)
+                {
+                    e.Set("taskPath", taskPath); e.Set("enabled", enabled.ToString()); e.Set("hidden", hidden.ToString()); e.Set("runLevel", runLevel); e.Set("author", author);
+                    e.Set("triggers", string.Join(",", trigTypes)); e.Set("xmlFile", file); e.Set("comClassId", clsid); e.Set("comImpl", impl);
+                    // linked to its HKCU COM registration (if any) once every scanner has finished: see RiskEngine.AddDerivedLinksAndEvidence
+                    if (hive == "HKCU") e.Set("comRegId", "reg:HKCU\\CLSID\\" + clsid + "\\" + srv);
+                }
+            }
+        }
+
+        /// <summary>Resolves a COM class id to its implementation path, the way COM itself does: per-user registration (HKCU) first, then the
+        /// machine-wide one (HKLM, including the 32-bit view) - the exact precedence a real process would use, which is also what makes an
+        /// HKCU-only registration able to silently replace a machine-wide COM handler.</summary>
+        static string ResolveComClass(string clsid, out string hive, out string srv)
+        {
+            hive = null; srv = null;
+            foreach (var s in new[] { "InprocServer32", "LocalServer32" })
+            {
+                string v = ReadDefaultValue(Registry.CurrentUser, @"Software\Classes\CLSID\" + clsid + "\\" + s);
+                if (!string.IsNullOrWhiteSpace(v)) { hive = "HKCU"; srv = s; return v; }
+            }
+            foreach (var baseKey in new[] { @"SOFTWARE\Classes\CLSID\", @"SOFTWARE\Classes\Wow6432Node\CLSID\" })
+                foreach (var s in new[] { "InprocServer32", "LocalServer32" })
+                {
+                    string v = ReadDefaultValue(Registry.LocalMachine, baseKey + clsid + "\\" + s);
+                    if (!string.IsNullOrWhiteSpace(v)) { hive = "HKLM"; srv = s; return v; }
+                }
+            return null;
+        }
+
+        static string ReadDefaultValue(RegistryKey root, string key)
+        {
+            try { using (var k = root.OpenSubKey(key)) return k == null ? null : Convert.ToString(k.GetValue(null)); }
+            catch { return null; }
         }
 
         static void HiddenFromStore(ScanContext ctx, HashSet<string> knownXml)

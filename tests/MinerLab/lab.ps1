@@ -104,6 +104,19 @@ switch ($Action) {
     $con2 = Set-WmiInstance -Namespace root\subscription -Class ActiveScriptEventConsumer -Arguments @{ Name = 'MinerLabTestScriptConsumer'; ScriptingEngine = 'VBScript'; ScriptText = "' MinerLabTest: intentionally empty, never triggered" }
     Set-WmiInstance -Namespace root\subscription -Class __FilterToConsumerBinding -Arguments @{ Filter = $flt2; Consumer = $con2 } | Out-Null
     Add-Item 'S14b' 'wmi' 'ActiveScriptEventConsumer (VBScript comment only) + filter + binding' 'MinerLabTestScriptConsumer'
+    # ---------- scheduled task COM handler action (fileless persistence) whose class is hijacked per-user (HKCU), not machine-wide
+    $comGuid = '{2B5F9617-61C3-4F6D-9A3B-' + ([guid]::NewGuid().ToString('N').Substring(0, 12)) + '}'
+    $comExe = Copy-Harness "$la\com\MinerLabTestCom.exe"
+    New-Item -Path "HKCU:\Software\Classes\CLSID\$comGuid\InprocServer32" -Force | Out-Null
+    Set-ItemProperty -Path "HKCU:\Software\Classes\CLSID\$comGuid\InprocServer32" -Name '(default)' -Value $comExe
+    $sch = New-Object -ComObject Schedule.Service; $sch.Connect()
+    $taskDef = $sch.NewTask(0)
+    $taskDef.RegistrationInfo.Description = 'MinerLabTest benign COM-handler task'
+    $taskDef.Settings.Enabled = $true; $taskDef.Settings.Hidden = $true
+    $comAction = $taskDef.Actions.Create(5)   # TASK_ACTION_COM_HANDLER
+    $comAction.ClassId = $comGuid; $comAction.Data = 'MinerLabTest'
+    $sch.GetFolder('\').RegisterTaskDefinition('MinerLabTestTaskCom', $taskDef, 6, $null, $null, 3) | Out-Null   # 6=CREATE_OR_UPDATE, 3=TASK_LOGON_INTERACTIVE_TOKEN
+    Add-Item 'S16' 'task-com' "HIDDEN task \MinerLabTestTaskCom (COM handler) -> per-user (HKCU) CLSID $comGuid -> LocalAppData harness" 'MinerLabTestTaskCom'
     # ---------- Startup-folder shortcut
     $ws = New-Object -ComObject WScript.Shell
     $lnk = $ws.CreateShortcut((Join-Path $startup 'MinerLabTest.lnk'))

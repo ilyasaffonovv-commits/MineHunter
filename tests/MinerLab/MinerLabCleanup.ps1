@@ -49,6 +49,14 @@ foreach ($k in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run', 'HKLM:\Sof
     if ($item) { foreach ($p in $item.PSObject.Properties) { if ($p.Name -like 'MinerLabTest*') { Remove-ItemProperty $k -Name $p.Name -ErrorAction SilentlyContinue; Say "run value removed: $k\$($p.Name)" } } }
 }
 
+# 4b. per-user (HKCU) COM registrations the lab's COM-handler task scenario (S16) points at
+foreach ($srv in 'InprocServer32', 'LocalServer32') {
+    Get-ChildItem 'HKCU:\Software\Classes\CLSID' -ErrorAction SilentlyContinue | ForEach-Object {
+        $v = (Get-ItemProperty -LiteralPath (Join-Path $_.PSPath $srv) -ErrorAction SilentlyContinue).'(default)'
+        if ($v -and $v -match 'MinerLab') { Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue; Say "COM class removed: $($_.PSChildName)" }
+    }
+}
+
 # 5. WMI: bindings first, then consumers and filters
 foreach ($b in Get-WmiObject -Namespace root\subscription -Class __FilterToConsumerBinding -ErrorAction SilentlyContinue) {
     if ("$($b.Filter)$($b.Consumer)" -match 'MinerLabTest') { $b | Remove-WmiObject; Say "wmi binding removed" }
@@ -83,5 +91,11 @@ foreach ($k in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run', 'HKLM:\Sof
 Get-WmiObject -Namespace root\subscription -Class __EventFilter -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'MinerLabTest*' } | ForEach-Object { [void]$left.Add("wmi filter $($_.Name)") }
 Get-WmiObject -Namespace root\subscription -Class __EventConsumer -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'MinerLabTest*' } | ForEach-Object { [void]$left.Add("wmi consumer $($_.Name)") }
 Get-Process | Where-Object { $_.Path -and $_.Path -match '\\MinerLab' } | ForEach-Object { [void]$left.Add("process $($_.Id) $($_.Path)") }
+foreach ($srv in 'InprocServer32', 'LocalServer32') {
+    Get-ChildItem 'HKCU:\Software\Classes\CLSID' -ErrorAction SilentlyContinue | ForEach-Object {
+        $v = (Get-ItemProperty -LiteralPath (Join-Path $_.PSPath $srv) -ErrorAction SilentlyContinue).'(default)'
+        if ($v -and $v -match 'MinerLab') { [void]$left.Add("com class $($_.PSChildName)") }
+    }
+}
 
 if ($left.Count -eq 0) { Say 'CLEANUP OK: no MinerLab objects remain.'; exit 0 } else { Say "CLEANUP INCOMPLETE ($($left.Count) left):"; $left | ForEach-Object { Say "  $_" }; exit 1 }

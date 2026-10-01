@@ -40,6 +40,7 @@ foreach ($it in $man.items) {
         'file'    { $found = Find-Entities { $_.kind -eq 'File' -and $_.location -eq $d } }
         'run-key' { $name = if ($it.id -eq 'S10a') { 'MinerLabTestAutorun' } else { 'MinerLabTestAutorunHKLM' }; $found = Find-Entities { $_.kind -eq 'RunKey' -and $_.title -eq $name } }
         'task'    { $found = Find-Entities { $_.kind -eq 'Task' -and $_.title -eq $d } }
+        'task-com' { $found = Find-Entities { $_.kind -eq 'Task' -and $_.title -eq $d } }
         'service' { $sn = if ($it.id -eq 'S13a') { 'MinerLabTestService' } else { 'MinerLabTestServiceTemp' }; $found = Find-Entities { $_.kind -eq 'Service' -and $_.title -eq $sn } }
         'wmi'     { $wn = if ($it.id -eq 'S14a') { 'MinerLabTestConsumer' } else { 'MinerLabTestScriptConsumer' }; $found = Find-Entities { $_.kind -eq 'Wmi' -and $_.title -eq $wn } }
         'startup' { $found = Find-Entities { $_.kind -eq 'StartupItem' -and $_.location -eq $d } }
