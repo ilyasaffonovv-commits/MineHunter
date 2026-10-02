@@ -25,3 +25,7 @@ tests/MinerLab/lab_dynamic*.json
 tests/MinerLab/bin/
 tests/MinerLab/src/obj/
 tests/MinerLab/src/bin/
+# portable layout produced by build_release.ps1
+/MineHunter Quick Scan.exe
+/MineHunter Full Scan.exe
+/components/

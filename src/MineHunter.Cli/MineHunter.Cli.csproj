@@ -1,18 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <AssemblyName>MineHunter</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>MineHunter-cli</AssemblyName>
     <RootNamespace>MineHunter</RootNamespace>
-    <UseWPF>true</UseWPF>
+    <UseWPF>false</UseWPF>
     <ApplicationManifest>$(MSBuildThisFileDirectory)../app.manifest</ApplicationManifest>
     <ApplicationIcon>$(MSBuildThisFileDirectory)../app.ico</ApplicationIcon>
-    <AssemblyTitle>MineHunter</AssemblyTitle>
+    <AssemblyTitle>MineHunter command line</AssemblyTitle>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\MineHunter.Core\MineHunter.Core.csproj" />
-    <ProjectReference Include="..\MineHunter.UI\MineHunter.UI.csproj" />
     <Reference Include="System.Management" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />

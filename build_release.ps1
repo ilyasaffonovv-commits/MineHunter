@@ -1,45 +1,52 @@
 <#
-  build_release.ps1 - builds MineHunter and lays out the ready-to-run release folder.
+  build_release.ps1 - builds MineHunter and lays out the ready-to-run portable folder.
 
-    powershell -ExecutionPolicy Bypass -File build_release.ps1              # build + copy MineHunter.exe / MineHunter-cli.exe next to this script
-    powershell -ExecutionPolicy Bypass -File build_release.ps1 -Zip         # also produces dist\MineHunter-<version>.zip (what you attach to a GitHub release)
+    powershell -ExecutionPolicy Bypass -File build_release.ps1              # build + lay the programs out next to this script
+    powershell -ExecutionPolicy Bypass -File build_release.ps1 -Zip         # also produces dist\MineHunter-Portable-x64.zip (what you attach to a GitHub release)
 
   Needs the .NET SDK (dotnet build). The result runs on any Windows 10/11 x64 without installing anything (.NET Framework 4.7.2+ ships with Windows).
-  MineHunter-cli.exe is the same program with the PE subsystem flipped to "console": it waits for completion and writes to stdout (scripts, CI).
+
+  Layout (the same in the repository folder after a build and inside the zip):
+    MineHunter.exe              main program (window, tray, command line)
+    MineHunter Quick Scan.exe   double click = quick scan
+    MineHunter Full Scan.exe    double click = full scan of all drives
+    MineHunter-cli.exe          console version for scripts
+    components\                 shared engine and window libraries, the updater helper (internal files)
+    rules\ config.json docs\    detection rules, settings, documentation
 #>
-param([switch]$Zip)
+param([switch]$Zip, [string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$proj = Join-Path $root 'src\MineHunter\MineHunter.csproj'
+$sln  = Join-Path $root 'src\MineHunter.sln'
 $bin  = Join-Path $root 'src\_bin'
 
 Write-Host '== build'
-& dotnet build $proj -c Release -o $bin -v q --nologo | Out-Host
+if (Test-Path $bin) { Remove-Item $bin -Recurse -Force }
+& dotnet build $sln -c $Configuration -v q --nologo | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 
-$exe = Join-Path $bin 'MineHunter.exe'
-Copy-Item $exe (Join-Path $root 'MineHunter.exe') -Force
-Copy-Item (Join-Path $bin 'MineHunter.exe.config') (Join-Path $root 'MineHunter.exe.config') -Force -ErrorAction SilentlyContinue
-
-# console flavour: flip IMAGE_SUBSYSTEM_WINDOWS_GUI (2) to IMAGE_SUBSYSTEM_WINDOWS_CUI (3)
-$bytes = [System.IO.File]::ReadAllBytes($exe)
-$pe = [BitConverter]::ToInt32($bytes, 0x3C)
-$subsystemOffset = $pe + 4 + 20 + 68
-if ($bytes[$subsystemOffset] -ne 2) { throw "unexpected subsystem $($bytes[$subsystemOffset])" }
-$bytes[$subsystemOffset] = 3
-[System.IO.File]::WriteAllBytes((Join-Path $root 'MineHunter-cli.exe'), $bytes)
-Copy-Item (Join-Path $bin 'MineHunter.exe.config') (Join-Path $root 'MineHunter-cli.exe.config') -Force -ErrorAction SilentlyContinue
+$programs = 'MineHunter.exe', 'MineHunter Quick Scan.exe', 'MineHunter Full Scan.exe', 'MineHunter-cli.exe'
+$components = 'MineHunter.Core.dll', 'MineHunter.UI.dll', 'MineHunter.UpdateHelper.exe', 'MineHunter.UpdateHelper.exe.config'
+foreach ($f in $programs) {
+    Copy-Item (Join-Path $bin $f) (Join-Path $root $f) -Force
+    Copy-Item (Join-Path $bin "$f.config") (Join-Path $root "$f.config") -Force -ErrorAction SilentlyContinue
+}
+$comp = Join-Path $root 'components'
+New-Item -ItemType Directory -Force $comp | Out-Null
+foreach ($f in $components) { Copy-Item (Join-Path $bin $f) (Join-Path $comp $f) -Force -ErrorAction SilentlyContinue }
 
 $ver = (Get-Item (Join-Path $root 'MineHunter.exe')).VersionInfo.ProductVersion
-$sums = foreach ($f in 'MineHunter.exe', 'MineHunter-cli.exe', 'rules\core.json') { $h = (Get-FileHash (Join-Path $root $f) -Algorithm SHA256).Hash.ToLower(); "$h  $f" }
+$sumFiles = @($programs) + @($components | Where-Object { $_ -notlike '*.config' } | ForEach-Object { "components\$_" }) + 'rules\core.json'
+$sums = foreach ($f in $sumFiles) { $h = (Get-FileHash (Join-Path $root $f) -Algorithm SHA256).Hash.ToLower(); "$h  " + $f.Replace('\', '/') }
 [System.IO.File]::WriteAllText((Join-Path $root 'SHA256SUMS.txt'), (($sums -join "`n") + "`n"), (New-Object System.Text.ASCIIEncoding))   # LF endings: `sha256sum -c` works too
 Write-Host "== ready: version $ver"; $sums | Out-Host
 
 if ($Zip) {
     $dist = Join-Path $root 'dist'; New-Item -ItemType Directory -Force $dist | Out-Null
-    $zipPath = Join-Path $dist ("MineHunter-v$ver.zip")
+    $zipPath = Join-Path $dist 'MineHunter-Portable-x64.zip'
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    $items = 'MineHunter.exe', 'MineHunter.exe.config', 'MineHunter-cli.exe', 'MineHunter-cli.exe.config', 'config.json', 'rules', 'README.md', 'README.ru.md', 'LICENSE', 'SHA256SUMS.txt', 'docs' | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+    $items = @($programs | ForEach-Object { $_; "$_.config" }) + 'components', 'config.json', 'rules', 'README.md', 'README.ru.md', 'CHANGELOG.md', 'LICENSE', 'SHA256SUMS.txt', 'docs'
+    $items = $items | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
     # ZipArchive with '/' separators (Windows PowerShell's Compress-Archive writes backslashes, which non-Windows extractors mishandle)
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     $zs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create)
@@ -52,5 +59,7 @@ if ($Zip) {
         }
     }
     $za.Dispose(); $zs.Dispose()
-    Write-Host "== zip: $zipPath ($([math]::Round((Get-Item $zipPath).Length/1KB)) KB)"
+    $zh = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+    [System.IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS-release.txt'), "$zh  MineHunter-Portable-x64.zip`n", (New-Object System.Text.ASCIIEncoding))
+    Write-Host "== zip: $zipPath ($([math]::Round((Get-Item $zipPath).Length/1KB)) KB)  sha256 $zh"
 }

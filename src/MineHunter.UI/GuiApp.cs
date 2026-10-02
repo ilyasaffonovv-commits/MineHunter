@@ -33,8 +33,13 @@ namespace MineHunter.Gui
             catch { }
         }
 
+        public static bool IsGuiInvocation(string[] args) { return args.Length == 0 || args[0].Equals("--gui", StringComparison.OrdinalIgnoreCase); }
+
+        public static int RunScanWindow(AppConfig cfg, MineHunter.Scanning.ScanMode mode, string[] args) { return Run(cfg, args); }
+
         public static int Run(AppConfig cfg, string[] args)
         {
+            if (args.Length > 0 && args[0].Equals("--gui", StringComparison.OrdinalIgnoreCase)) args = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Skip(args, 1));
             bool created;
             using (var mutex = new Mutex(true, @"Local\MineHunter.Gui.SingleInstance", out created))
             {

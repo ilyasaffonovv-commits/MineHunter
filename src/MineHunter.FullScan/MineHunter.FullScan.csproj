@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <AssemblyName>MineHunter</AssemblyName>
+    <AssemblyName>MineHunter Full Scan</AssemblyName>
     <RootNamespace>MineHunter</RootNamespace>
     <UseWPF>true</UseWPF>
     <ApplicationManifest>$(MSBuildThisFileDirectory)../app.manifest</ApplicationManifest>
     <ApplicationIcon>$(MSBuildThisFileDirectory)../app.ico</ApplicationIcon>
-    <AssemblyTitle>MineHunter</AssemblyTitle>
+    <AssemblyTitle>MineHunter Full Scan</AssemblyTitle>
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
   </PropertyGroup>

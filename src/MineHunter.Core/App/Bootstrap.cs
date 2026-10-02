@@ -1,51 +1,43 @@
 using System;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using MineHunter.Rules;
-using MineHunter.Scanning;
 using MineHunter.Update;
 using MineHunter.Util;
 
 namespace MineHunter
 {
-    public static class Program
+    /// <summary>Start-up work that every MineHunter program (main window, quick scan, full scan, command line) does the same way.</summary>
+    public static class Bootstrap
     {
-        [DllImport("kernel32.dll")] static extern bool AttachConsole(int pid);
-        [DllImport("kernel32.dll")] static extern bool AllocConsole();
-        [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int h);
+        static bool _done;
+        static AppConfig _cfg;
 
-        [STAThread]
-        public static int Main(string[] args)
+        public static AppConfig Init()
         {
-            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
-            {
-                try
-                {
-                    Directory.CreateDirectory(RulePack.DataDir);
-                    File.AppendAllText(Path.Combine(RulePack.DataDir, "crash.log"), DateTime.Now.ToString("o") + "\n" + e.ExceptionObject + "\n\n");
-                }
-                catch { }
-            };
-            var cfg = AppConfig.Load();
-            Loc.Init(cfg.Language);
+            if (_done) return _cfg;
+            _done = true;
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => CrashLog("unhandled", e.ExceptionObject);
+            _cfg = AppConfig.Load();
+            Loc.Init(_cfg.Language);
             try { Directory.CreateDirectory(RulePack.DataDir); HardenDataDir(); Log.FilePath = Path.Combine(RulePack.DataDir, "minehunter.log"); TrimLog(Log.FilePath); } catch { }
             // a cleanup that was killed (or lost power) may have left programs frozen: let them go again before anything else
             try { MineHunter.Remediation.RemediationEngine.RecoverInterrupted(); } catch { }
+            return _cfg;
+        }
 
-            bool gui = args.Length == 0 || args[0].Equals("--gui", StringComparison.OrdinalIgnoreCase);
-            if (!gui)
+        public static void CrashLog(string where, object ex)
+        {
+            try
             {
-                // WinExe has no console of its own: attach to the parent's console (or create one) unless output is redirected
-                if (GetStdHandle(-11) == IntPtr.Zero || !AttachConsole(-1)) { if (GetStdHandle(-11) == IntPtr.Zero) AllocConsole(); }
-                return Cli.Run(args, cfg);
+                Directory.CreateDirectory(RulePack.DataDir);
+                File.AppendAllText(Path.Combine(RulePack.DataDir, "crash.log"), DateTime.Now.ToString("o") + " " + where + "\n" + ex + "\n\n");
             }
-            return Gui.GuiApp.Run(cfg, args.Skip(1).ToArray());
+            catch { }
         }
 
         /// <summary>Self-protection: the data folder (quarantine, allow-list, rule updates, config) is writable only by SYSTEM and Administrators,
         /// so a non-elevated program cannot whitelist itself, plant rule files or tamper with quarantined samples.</summary>
-        static void HardenDataDir()
+        public static void HardenDataDir()
         {
             try
             {

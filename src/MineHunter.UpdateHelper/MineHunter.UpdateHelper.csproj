@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>MineHunter.UpdateHelper</AssemblyName>
+    <RootNamespace>MineHunter.UpdateHelper</RootNamespace>
+    <ApplicationManifest>helper.manifest</ApplicationManifest>
+    <ApplicationIcon>../app.ico</ApplicationIcon>
+    <AssemblyTitle>MineHunter updater</AssemblyTitle>
+  </PropertyGroup>
+</Project>

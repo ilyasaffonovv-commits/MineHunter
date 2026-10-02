@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>MineHunter.UI</AssemblyName>
+    <RootNamespace>MineHunter</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <AssemblyTitle>MineHunter windows</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MineHunter.Core\MineHunter.Core.csproj" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- the window layout is loaded at run time; it is not compiled as a WPF page -->
+    <Page Remove="**\*.xaml" />
+    <EmbeddedResource Include="MainWindow.xaml" LogicalName="ui.MainWindow.xaml" />
+    <EmbeddedResource Include="Theme.xaml" LogicalName="ui.Theme.xaml" Condition="Exists('Theme.xaml')" />
+  </ItemGroup>
+</Project>
