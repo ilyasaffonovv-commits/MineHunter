@@ -312,8 +312,16 @@ namespace MineHunter.Rules
             BrowserScanner = new StringScanner(BrowserMinerStrings.ToList());
         }
 
+        /// <summary>Publishers the user excluded in the settings (the certificate subject must match one of these exactly; it must also be a valid signature).</summary>
+        public readonly List<string> UserTrustedPublishers = new List<string>();
+
         public bool IsTrustedPublisher(string publisher)
         {
+            if (UserTrustedPublishers.Count > 0 && !string.IsNullOrWhiteSpace(publisher))
+            {
+                string np = NormPublisher(publisher);
+                foreach (var u in UserTrustedPublishers) if (NormPublisher(u) == np) return true;
+            }
             // The certificate subject must START with a known publisher name followed by a word boundary. Plain substring matching would
             // trust "Intelligent Systems Ltd" because it contains "Intel", or "Pineapple Corp" because it contains "apple".
             string p = NormPublisher(publisher);

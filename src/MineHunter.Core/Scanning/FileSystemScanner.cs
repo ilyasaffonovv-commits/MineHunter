@@ -98,7 +98,7 @@ namespace MineHunter.Scanning
             int total = roots.Count, idx = 0;
             var opts = new ParallelOptions { MaxDegreeOfParallelism = ctx.Options.Parallelism, CancellationToken = ctx.Cancel };
             bool budgetHit = false;
-            TimeSpan budget = TimeSpan.FromMinutes(ctx.Options.Mode == ScanMode.Full ? ctx.Options.MaxFullScanMinutes : 12);
+            TimeSpan budget = ctx.Options.Mode == ScanMode.Full ? (ctx.Options.MaxFullScanMinutes <= 0 ? TimeSpan.FromDays(3) : TimeSpan.FromMinutes(ctx.Options.MaxFullScanMinutes)) : TimeSpan.FromMinutes(12);
 
             var doneRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);     // a later, wider root (a whole drive) must not walk these folders a second time
             foreach (var root in roots)
@@ -108,7 +108,7 @@ namespace MineHunter.Scanning
                 if (!Directory.Exists(root.Path)) continue;
                 if (sw.Elapsed > budget) { budgetHit = true; break; }
                 ctx.Report("Files: " + root.Path, 70 + (int)(25.0 * idx / Math.Max(1, total)));
-                var files = Fs.EnumerateFiles(root.Path, d => (!root.SkipStd || !SkipDirNames.Contains(Path.GetFileName(d))) && !doneRoots.Contains(d.TrimEnd(Path.DirectorySeparatorChar)), f => root.FileFilter(f, 0) || MinerConfigAnalyzer.IsCandidateName(f) || (f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && PathUtil.IsUserWritable(f)), root.Depth, d => ctx.Denied("Files", d));
+                var files = Fs.EnumerateFiles(root.Path, d => (!root.SkipStd || !SkipDirNames.Contains(Path.GetFileName(d))) && !doneRoots.Contains(d.TrimEnd(Path.DirectorySeparatorChar)), f => root.FileFilter(f, 0) || MinerConfigAnalyzer.IsCandidateName(f) || (ctx.Options.ScanArchives && f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) && PathUtil.IsUserWritable(f)), root.Depth, d => ctx.Denied("Files", d));
                 var part = Partitioner.Create(files, EnumerablePartitionerOptions.NoBuffering);
                 try
                 {
@@ -143,13 +143,13 @@ namespace MineHunter.Scanning
 
             if (ctx.Options.Mode == ScanMode.Custom)
             {
-                if (!string.IsNullOrEmpty(ctx.Options.CustomPath)) list.Add(new Root { Path = ctx.Options.CustomPath, Depth = 40, FileFilter = exeAndDll, SkipStd = false });
+                foreach (var cp in ctx.Options.AllCustomPaths()) list.Add(new Root { Path = cp, Depth = 40, FileFilter = exeAndDll, SkipStd = false });
                 return list;
             }
 
             if (ctx.Options.Mode == ScanMode.Full)
             {
-                foreach (var d in DriveInfo.GetDrives().Where(x => x.DriveType == DriveType.Fixed && x.IsReady))
+                foreach (var d in DriveInfo.GetDrives().Where(x => x.IsReady && (x.DriveType == DriveType.Fixed || (ctx.Options.IncludeRemovable && x.DriveType == DriveType.Removable) || (ctx.Options.IncludeNetwork && x.DriveType == DriveType.Network))))
                     list.Add(new Root { Path = d.RootDirectory.FullName, Depth = 40, FileFilter = exeAndDll });
                 // user areas first are covered by the drive walk; also make sure the profile roots are visited early
                 foreach (var up in PathUtil.UserProfiles()) list.Insert(0, new Root { Path = up, Depth = 40, FileFilter = exeAndDll });

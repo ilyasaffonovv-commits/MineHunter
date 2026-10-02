@@ -67,6 +67,8 @@ namespace MineHunter.Scanning
         public Entity Screen(string path)
         {
             FileInfo fi;
+            ctx.Item(path); ctx.Throttle();
+            if (ctx.IsExcluded(path)) return null;
             try { fi = new FileInfo(path); if (!fi.Exists) return null; } catch { return null; }
             byte code;
             if (ctx.Options.UseCache && ctx.Cache.TryGet(fi, out code)) { Interlocked.Increment(ref ctx.Stats.FilesSkippedByCache); return null; }
@@ -136,7 +138,7 @@ namespace MineHunter.Scanning
             if (!isPe && !nameScript)
             {
                 // not executable content, except a miner's configuration file (pool + wallet): packed miners keep nothing else to recognise them by
-                if (ArchiveNames.Wanted(path, fi.Length))
+                if (ctx.Options.ScanArchives && ArchiveNames.Wanted(path, fi.Length))
                 {
                     int aw; string hit = ArchiveNames.Find(ctx, path, out aw);
                     if (hit != null) e.Add(new Evidence("ARCHIVE.MINER_NAME", EvidenceCategory.Content, aw, "An archive holds a file that looks like a miner: " + hit, path));

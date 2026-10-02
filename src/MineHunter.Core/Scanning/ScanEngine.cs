@@ -16,9 +16,9 @@ namespace MineHunter.Scanning
 {
     public static class AppInfo
     {
-        public const string Version = "1.0.1";
+        public const string Version = "1.1.0";
         /// <summary>Bump when detection logic changes: cached "looked harmless" verdicts of older logic are then discarded.</summary>
-        public const int EngineRevision = 6;
+        public const int EngineRevision = 7;
         public const string Name = "MineHunter";
     }
 
@@ -41,6 +41,7 @@ namespace MineHunter.Scanning
         static ScanResult RunCore(ScanOptions opt, CancellationToken ct, Action<string, int> progress, ScanResult res, Stopwatch sw)
         {
             RulePack rules = RulePack.Load();
+            if (opt.UserSettings != null) foreach (var up in opt.UserSettings.ExcludedPublishers) rules.UserTrustedPublishers.Add(up);
             var allow = Allowlist.Load();
             res.RulesVersion = rules.Version;
             Perf.Reset();

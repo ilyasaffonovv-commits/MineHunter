@@ -29,6 +29,9 @@ namespace MineHunter.Analysis
         public bool Bloated;
         public string Company, Product, Description, OriginalName, FileVersion, InternalName;
         public string Error;
+        public List<string> ImportNames = new List<string>();     // "dll!function" (only filled when asked for: the file report)
+        public List<string> ExportNames = new List<string>();
+        public bool CollectNames;
 
         public bool LooksInjector
         {
@@ -68,10 +71,10 @@ namespace MineHunter.Analysis
         }
 
         /// <summary>Parses headers, section entropy, imports and overlay. Cheap: a few reads per file.</summary>
-        public static PeInfo Analyze(string path, bool deep = true)
+        public static PeInfo Analyze(string path, bool deep = true, bool collectNames = false)
         {
             System.Threading.Interlocked.Increment(ref Perf.PeParses); if (deep) System.Threading.Interlocked.Increment(ref Perf.PeDeepParses);
-            var pe = new PeInfo();
+            var pe = new PeInfo { CollectNames = collectNames };
             try
             {
                 using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, FileOptions.RandomAccess))
@@ -150,7 +153,15 @@ namespace MineHunter.Analysis
                         if (pe.HasExports && exp[0] != 0)
                         {
                             long eo = RvaToOffset(pe.Sections, exp[0], sizeOfHeaders);
-                            if (eo > 0 && eo + 40 < pe.FileSize) { var eb = new byte[40]; fs.Seek(eo, SeekOrigin.Begin); if (fs.Read(eb, 0, 40) == 40) pe.ExportCount = (int)Math.Min(U32(eb, 24), 100000); }
+                            if (eo > 0 && eo + 40 < pe.FileSize)
+                            {
+                                var eb = new byte[40]; fs.Seek(eo, SeekOrigin.Begin);
+                                if (fs.Read(eb, 0, 40) == 40)
+                                {
+                                    pe.ExportCount = (int)Math.Min(U32(eb, 24), 100000);
+                                    if (collectNames) ReadExportNames(fs, pe, U32(eb, 24), U32(eb, 32), sizeOfHeaders);
+                                }
+                            }
                         }
 
                         // bloat: huge file whose overlay / tail is a repeated pattern (used to hide from sandboxes / cloud AV)
@@ -222,11 +233,31 @@ namespace MineHunter.Analysis
                         if (fo < 0) continue;
                         string fn = ReadCString(fs, fo + 2, 64);
                         if (fn != null && IsInteresting(fn)) pe.ApiOfInterest.Add(fn);
+                        if (pe.CollectNames && fn != null && pe.ImportNames.Count < 400) pe.ImportNames.Add((dll ?? "?").ToLowerInvariant() + "!" + fn);
                         if (totalFuncs > 6000) break;
                     }
                     if (totalFuncs > 6000) break;
                 }
                 pe.ImportFuncCount = totalFuncs;
+            }
+            catch { }
+        }
+
+        static void ReadExportNames(FileStream fs, PeInfo pe, uint count, uint namesRva, uint sizeOfHeaders)
+        {
+            try
+            {
+                long no = RvaToOffset(pe.Sections, namesRva, sizeOfHeaders);
+                if (no < 0) return;
+                var arr = new byte[4];
+                for (int i = 0; i < Math.Min(count, 100u); i++)
+                {
+                    fs.Seek(no + i * 4, SeekOrigin.Begin);
+                    if (fs.Read(arr, 0, 4) < 4) break;
+                    long so = RvaToOffset(pe.Sections, U32(arr, 0), sizeOfHeaders);
+                    string name = so < 0 ? null : ReadCString(fs, so, 96);
+                    if (name != null) pe.ExportNames.Add(name);
+                }
             }
             catch { }
         }

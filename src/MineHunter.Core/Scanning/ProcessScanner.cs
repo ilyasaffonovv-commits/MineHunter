@@ -254,8 +254,10 @@ namespace MineHunter.Scanning
             int done = 0;
             Parallel.ForEach(unique, new ParallelOptions { MaxDegreeOfParallelism = ctx.Options.Parallelism, CancellationToken = ctx.Cancel }, m =>
             {
-                ctx.Files.Inspect(m, FileRole.Module);
+                ctx.Item(m);
+                if (!ctx.IsExcluded(m)) ctx.Files.Inspect(m, FileRole.Module);
                 int d = Interlocked.Increment(ref done);
+                ctx.Stats.ModulesChecked = Math.Max(ctx.Stats.ModulesChecked, d);
                 if (d % 400 == 0) ctx.Report("Loaded libraries checked: " + d + "/" + unique.Count, 15 + (int)(10.0 * d / Math.Max(1, unique.Count)));
             });
             ctx.Stats.ModulesChecked = unique.Count;

@@ -30,6 +30,14 @@ namespace MineHunter.Risk
     {
         public const int SuspiciousAt = 30, HighRiskAt = 60, MalwareAt = 85, ObservationAt = 12;
 
+        /// <summary>0 Normal, 1 Strict, 2 Paranoid (set from the scan options before a verdict is made). A higher level reports on weaker evidence; it never lowers the
+        /// number of independent kinds of evidence needed for High Risk, and the Malware bar stays where it is.</summary>
+        [ThreadStatic] static int _sens;
+        public static int Sensitivity { get { return _sens; } set { _sens = Math.Max(0, Math.Min(2, value)); } }
+        static int EffSuspicious { get { return _sens == 2 ? 20 : _sens == 1 ? 25 : SuspiciousAt; } }
+        static int EffHigh { get { return _sens == 2 ? 48 : _sens == 1 ? 54 : HighRiskAt; } }
+        static int EffObservation { get { return _sens == 2 ? 8 : _sens == 1 ? 10 : ObservationAt; } }
+
         static readonly Dictionary<EvidenceCategory, int> Cap = new Dictionary<EvidenceCategory, int>
         {
             { EvidenceCategory.Signature, 15 }, { EvidenceCategory.Location, 20 }, { EvidenceCategory.Masquerade, 50 }, { EvidenceCategory.Content, 75 },
@@ -95,11 +103,11 @@ namespace MineHunter.Risk
             whyNotHigher = null;
             double t = s.Total;
             if (t >= MalwareAt && ((s.Definitive && s.StrongCategories >= 2) || s.StrongCategories >= 3 || s.ByCategory.ContainsKey(EvidenceCategory.Reputation) && s.ByCategory[EvidenceCategory.Reputation] >= 100)) return Verdict.Malware;
-            if ((t >= HighRiskAt && (s.Definitive || s.StrongCategories >= 2)) || (s.Definitive && t >= 50))
+            if ((t >= EffHigh && (s.Definitive || s.StrongCategories >= 2)) || (s.Definitive && t >= 50))
                 return Verdict.HighRisk;
-            if (t >= SuspiciousAt)
+            if (t >= EffSuspicious)
             {
-                if (t >= HighRiskAt) whyNotHigher = "The score is high, but the evidence comes from a single kind of signal (" + (s.StrongCategories == 0 ? "only weak signals like path/signature" : "one category") + "). A program is only called High Risk when independent kinds of evidence agree, to avoid false alarms on normal software.";
+                if (t >= EffHigh) whyNotHigher = "The score is high, but the evidence comes from a single kind of signal (" + (s.StrongCategories == 0 ? "only weak signals like path/signature" : "one category") + "). A program is only called High Risk when independent kinds of evidence agree, to avoid false alarms on normal software.";
                 return Verdict.Suspicious;
             }
             return Verdict.Clean;
@@ -115,7 +123,9 @@ namespace MineHunter.Risk
 
         public static List<Finding> Build(ScanContext ctx, out List<Entity> observations)
         {
+            Sensitivity = ctx.Options.Sensitivity;
             var ents = ctx.Entities.Values.ToList();
+            if (ctx.Options.DeveloperContext) foreach (var de in ents) DevContext(de);
             var byId = ents.ToDictionary(e => e.Id, e => e, StringComparer.OrdinalIgnoreCase);
             var links = ctx.Links.ToList();
 
@@ -130,7 +140,7 @@ namespace MineHunter.Risk
 
             // candidate nodes
             Func<Entity, bool> isCandidate = e =>
-                e.Evidence.Any(x => x.Weight > 0 && x.Definitive) || e.Score >= ObservationAt ||
+                e.Evidence.Any(x => x.Weight > 0 && x.Definitive) || e.Score >= EffObservation ||
                 e.Evidence.Any(x => x.Weight > 0 && (x.Category == EvidenceCategory.Tamper || x.Category == EvidenceCategory.Persistence) && x.Weight >= 10);
             var cand = new HashSet<string>(ents.Where(isCandidate).Select(e => e.Id), StringComparer.OrdinalIgnoreCase);
             var uf = new Uf();
@@ -166,7 +176,7 @@ namespace MineHunter.Risk
                 if (toolClass != null && verdict > Verdict.Suspicious) { verdict = Verdict.Suspicious; why = null; }
                 if (verdict == Verdict.Clean)
                 {
-                    if (sc.Total >= ObservationAt) foreach (var m in members.Where(m => m.Score >= ObservationAt).OrderByDescending(m => m.Score).Take(1)) observations.Add(m);
+                    if (sc.Total >= EffObservation) foreach (var m in members.Where(m => m.Score >= EffObservation).OrderByDescending(m => m.Score).Take(1)) observations.Add(m);
                     continue;
                 }
                 var f = new Finding { Id = "F" + (++counter), Verdict = verdict, Score = (int)Math.Round(Math.Min(sc.Total, 100)), Entities = ctxMembers, WhyNotHigher = why, ToolClass = toolClass };
@@ -183,6 +193,24 @@ namespace MineHunter.Risk
             foreach (var f in findings) { Decision.Plan(ctx, f); f.ChainLines = ThreatGraph.Render(f); }
             observations = observations.OrderByDescending(o => o.Score).Take(60).ToList();
             return findings;
+        }
+
+        static readonly string[] DevMarkers = { "\\node_modules\\", "\\.venv\\", "\\venv\\", "\\site-packages\\", "\\.cargo\\", "\\.rustup\\", "\\.gradle\\", "\\.nuget\\", "\\.m2\\", "\\target\\debug\\", "\\target\\release\\", "\\bin\\debug\\", "\\bin\\release\\", "\\obj\\debug\\", "\\obj\\release\\", "\\.vs\\", "\\.idea\\", "\\__pycache__\\", "\\.tox\\", "\\go\\pkg\\" };
+
+        /// <summary>Developer preset: files that sit in build output, virtual environments or package folders are normally unsigned and often packed or odd, so the weak
+        /// signals (unsigned, user folder, entropy, missing version info) are set aside for them. Evidence of a miner, a network connection or persistence still counts in full.</summary>
+        static void DevContext(Entity e)
+        {
+            if ((e.Kind != EntityKind.File && e.Kind != EntityKind.Process) || string.IsNullOrEmpty(e.Location)) return;
+            string p = e.Location.ToLowerInvariant();
+            if (!DevMarkers.Any(m => p.Contains(m))) return;
+            lock (e.Evidence)
+                for (int i = 0; i < e.Evidence.Count; i++)
+                {
+                    var ev = e.Evidence[i];
+                    if (ev.Weight > 0 && !ev.Definitive && (ev.Category == EvidenceCategory.Signature || ev.Category == EvidenceCategory.Location || (ev.Category == EvidenceCategory.Content && ev.Weight <= 8)))
+                        e.Evidence[i] = new Evidence(ev.RuleId, ev.Category, 0, ev.Text, ev.Detail, false);
+                }
         }
 
         /// <summary>Evidence that only miners or real malware produce. A cheat is packed, unsigned and injects code, but it does not talk to a pool, carry a miner configuration,

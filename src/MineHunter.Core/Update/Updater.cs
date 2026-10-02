@@ -111,7 +111,7 @@ namespace MineHunter.Update
     /// nothing from this computer is sent). Rule packs are accepted only after SHA-256 (and, if a key is configured, RSA signature) verification.</summary>
     public static class Updater
     {
-        static HttpClient Client()
+        internal static HttpClient Client()
         {
             try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)12288 | SecurityProtocolType.Tls12; } catch { try { ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072; } catch { } }
             var c = new HttpClient { Timeout = TimeSpan.FromSeconds(7) };

@@ -21,7 +21,7 @@ namespace MineHunter
 {
     /// <summary>Built-in checks: `MineHunter.exe selftest`. They exercise parsing, rules, scoring calibration and the reversible quarantine
     /// without touching anything outside a temporary folder.</summary>
-    public static class SelfTest
+    public static partial class SelfTest
     {
         static int passed, failed;
         static TextWriter W;
@@ -675,6 +675,7 @@ namespace MineHunter
             W = w; passed = failed = 0;
             w.WriteLine("MineHunter self-test\n");
             var rules = RulePack.Load();
+            if (Environment.GetEnvironmentVariable("MH_SELFTEST_ONLY") == "modules") { ModuleChecks(rules); w.WriteLine(Environment.NewLine + (failed == 0 ? "ALL " + passed + " CHECKS PASSED (product-layer checks only)" : failed + " CHECK(S) FAILED, " + passed + " passed")); return failed == 0 ? 0 : 1; }
 
             w.WriteLine("Paths and text helpers");
             Check("classify %TEMP%", PathUtil.Classify(Path.Combine(Path.GetTempPath(), "x.exe")) == PathClass.UserTemp);
@@ -897,6 +898,8 @@ namespace MineHunter
                 RulePack.TestDataDirOverride = oldData;
                 try { Directory.Delete(tmpData, true); } catch { }
             }
+
+            ModuleChecks(rules);
 
             w.WriteLine("\nReports");
             var empty = new ScanResult { AppVersion = AppInfo.Version, Started = DateTime.Now, Finished = DateTime.Now, Mode = "Quick", RulesVersion = rules.Version };
