@@ -238,6 +238,26 @@ namespace MineHunter.Update
             catch (Exception ex) { return ex.Message; }
         }
 
+        /// <summary>Puts the version from the backup folder back (the helper does it after the program has closed). Returns null when the helper was started.</summary>
+        public static string StartRollback(string installDir, string restartExe)
+        {
+            try
+            {
+                string ver = BackupVersion(); if (ver == null) return "there is no saved previous version";
+                string backup = Path.Combine(UpdatesDir, "backup", ver);
+                string helperSrc = Path.Combine(installDir, "components", "MineHunter.UpdateHelper.exe");
+                if (!File.Exists(helperSrc)) return "the updater helper is missing";
+                string tmp = Path.Combine(Path.GetTempPath(), "mh-upd-" + Guid.NewGuid().ToString("N").Substring(0, 8)); Directory.CreateDirectory(tmp);
+                string helper = Path.Combine(tmp, "MineHunter.UpdateHelper.exe"); File.Copy(helperSrc, helper, true);
+                string cfg = helperSrc + ".config"; if (File.Exists(cfg)) File.Copy(cfg, helper + ".config", true);
+                var args = new List<string> { "rollback", "--dst", installDir.TrimEnd('\\'), "--backup", backup, "--result", ResultFile, "--pid", Process.GetCurrentProcess().Id.ToString() };
+                if (!string.IsNullOrEmpty(restartExe)) { args.Add("--restart"); args.Add(restartExe); }
+                Process.Start(new ProcessStartInfo(helper) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = tmp, Arguments = string.Join(" ", args.Select(Quote)) });
+                return null;
+            }
+            catch (Exception ex) { return ex.Message; }
+        }
+
         static string Quote(string a) { return a.IndexOfAny(new[] { ' ', '\t', '"' }) >= 0 ? "\"" + a.Replace("\"", "\\\"") + "\"" : a; }
 
         /// <summary>What the helper reported after the last update attempt (read once, then removed).</summary>

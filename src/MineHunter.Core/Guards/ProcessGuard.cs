@@ -30,7 +30,7 @@ namespace MineHunter.Guards
         public string Mode { get { return "WMI process events"; } }
         public void Start()
         {
-            w = new ManagementEventWatcher(new WqlEventQuery("SELECT ProcessID, ParentProcessID, ProcessName FROM Win32_ProcessStartTrace"));
+            w = new ManagementEventWatcher(new WqlEventQuery("Win32_ProcessStartTrace"));
             w.EventArrived += (s, e) =>
             {
                 try

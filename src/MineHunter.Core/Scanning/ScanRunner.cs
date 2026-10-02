@@ -36,6 +36,7 @@ namespace MineHunter.Scanning
             {
                 run.ReportTxt = ReportWriter.Write(res, null, ReportWriter.DefaultDir);
                 run.ReportHtml = ReportHtml.Write(res, null, Path.ChangeExtension(run.ReportTxt, ".html"));
+                if (!res.Aborted) ResultSnapshot.Save(res);
             }
             catch (Exception ex) { Log.Warn("report: " + ex.Message); }
             try

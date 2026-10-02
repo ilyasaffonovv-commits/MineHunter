@@ -12,11 +12,11 @@
     <Reference Include="System.Management" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
     <!-- the window layout is loaded at run time; it is not compiled as a WPF page -->
     <Page Remove="**\*.xaml" />
-    <EmbeddedResource Include="MainWindow.xaml" LogicalName="ui.MainWindow.xaml" />
-    <EmbeddedResource Include="Theme.xaml" LogicalName="ui.Theme.xaml" Condition="Exists('Theme.xaml')" />
+    <EmbeddedResource Include="Theme.xaml" LogicalName="ui.Theme.xaml" />
   </ItemGroup>
 </Project>
