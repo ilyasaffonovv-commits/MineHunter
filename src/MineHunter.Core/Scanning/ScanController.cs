@@ -29,17 +29,20 @@ namespace MineHunter.Scanning
 
         volatile bool running;
         CancellationTokenSource cts;
-        Mutex global;
+        FileStream global;      // an exclusive lock file: held while a scan runs, so no other MineHunter program starts one at the same time (released by the OS if the program dies)
 
         /// <summary>Starts a scan. Returns false (and sets Error) when one is already running here or in another MineHunter program.</summary>
         public bool Start(ScanMode mode, string trigger, AppConfig cfg, Settings settings, IEnumerable<string> paths = null)
         {
             Error = null;
             if (running) { Error = Loc.L("A scan is already running.", "Проверка уже идёт."); return false; }
-            bool created;
-            var m = new Mutex(true, @"Local\MineHunter.ScanRunning", out created);
-            if (!created) { try { m.Dispose(); } catch { } Error = Loc.L("Another MineHunter program is scanning right now. Wait until it finishes.", "Сейчас сканирует другая программа MineHunter. Дождитесь окончания."); return false; }
-            global = m;
+            try
+            {
+                Directory.CreateDirectory(RulePack.DataDir);
+                global = new FileStream(Path.Combine(RulePack.DataDir, "scan-running.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) { Error = Loc.L("Another MineHunter program is scanning right now. Wait until it finishes.", "Сейчас сканирует другая программа MineHunter. Дождитесь окончания."); return false; }
+            catch (UnauthorizedAccessException) { Error = Loc.L("Another MineHunter program is scanning right now. Wait until it finishes.", "Сейчас сканирует другая программа MineHunter. Дождитесь окончания."); return false; }
             Mode = mode; Trigger = trigger; CancelRequested = false;
             Live = new ScanProgress();
             cts = new CancellationTokenSource(); var ct = cts.Token;
@@ -52,7 +55,7 @@ namespace MineHunter.Scanning
                 catch (Exception ex) { err = ex; Log.Error("scan failed: " + ex); }
                 if (err != null) Error = err.GetBaseException().Message;
                 LastRun = run; running = false;
-                try { global.ReleaseMutex(); global.Dispose(); } catch { }
+                try { global.Dispose(); } catch { }
                 var h = Finished; if (h != null) { try { h(run); } catch (Exception ex) { Log.Warn("scan finished handler: " + ex.Message); } }
             });
             return true;

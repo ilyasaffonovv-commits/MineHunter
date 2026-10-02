@@ -199,14 +199,24 @@ namespace MineHunter.Gui
                 foreach (var w in warns.Take(4)) wp.Children.Add(Ui.Txt("•  " + w, 12, Ui.TextB, null, true, new Thickness(0, 2, 0, 0)));
                 var wcard = Ui.Card(wp, 14, Ui.Soft(Ui.Warn, 20), Ui.Soft(Ui.Warn, 70)); wcard.Margin = new Thickness(0, 12, 0, 0); Grid.SetRow(wcard, row++); body.Children.Add(wcard);
             }
-            if (res.Findings.Count > 0 || res.Observations.Count > 0)
+            Func<bool, UIElement> makeResults = showNotes =>
             {
                 results = new ResultsView(owner, fixedMode);
                 results.NeutralizeRequested = Neutralize;
                 results.CheckFileRequested = p => m.Navigate("files", p);
                 results.ResultChanged = () => { ResultSnapshot.Save(res); ShowDone(res, false); };
+                if (showNotes) results.ShowNotes(true);
                 results.Show(res, cleanupRows);
-                results.Root.Margin = new Thickness(0, 14, 0, 0); Grid.SetRow(results.Root, row); body.Children.Add(results.Root);
+                results.Root.Margin = new Thickness(0, 14, 0, 0); return results.Root;
+            };
+            if (res.Findings.Count > 0 || (cleanupRows != null && cleanupRows.Count > 0)) { var rv = makeResults(false); Grid.SetRow(rv, row); body.Children.Add(rv); }
+            else if (res.Observations.Count > 0)
+            {
+                // a clean result stays clean on screen: the minor notes are one click away
+                var holder = new ContentControl();
+                var more = Ui.Btn(L("Show the " + res.Observations.Count + " minor notes (not threats)", "Показать " + res.Observations.Count + " мелких заметок (не угроз)"), null, "BtnGhost"); more.Margin = new Thickness(0, 14, 0, 0); more.HorizontalAlignment = HorizontalAlignment.Left;
+                more.Click += (s, e) => { holder.Content = makeResults(true); };
+                holder.Content = more; Grid.SetRow(holder, row); body.Children.Add(holder);
             }
             Root.Content = body;
         }

@@ -72,16 +72,13 @@ namespace MineHunter
         public static string Anonymize(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
+            // The placeholders are private tokens that are turned into the readable ones at the very end, so that a user called "User" cannot be found again inside "<user>" (or in "Users").
+            const string U = "\u0001\u0001", P = "\u0002\u0002";       // control characters only: no name can be found inside them
             string t = text;
-            foreach (var up in PathUtil.UserProfiles())
-            {
-                string name = Path.GetFileName(up);
-                if (!string.IsNullOrEmpty(name)) t = Regex.Replace(t, Regex.Escape(up), @"C:\Users\<user>", RegexOptions.IgnoreCase);
-            }
-            t = Regex.Replace(t, @"[A-Za-z]:\\Users\\[^\\\s""']+", @"C:\Users\<user>", RegexOptions.IgnoreCase);
-            if (!string.IsNullOrEmpty(Environment.UserName)) t = Regex.Replace(t, Regex.Escape(Environment.UserName), "<user>", RegexOptions.IgnoreCase);
-            if (!string.IsNullOrEmpty(Environment.MachineName)) t = Regex.Replace(t, Regex.Escape(Environment.MachineName), "<pc>", RegexOptions.IgnoreCase);
-            return t;
+            if (!string.IsNullOrEmpty(Environment.UserName)) t = Regex.Replace(t, @"(?<![\p{L}\p{N}_])" + Regex.Escape(Environment.UserName) + @"(?![\p{L}\p{N}_])", U, RegexOptions.IgnoreCase);
+            if (!string.IsNullOrEmpty(Environment.MachineName)) t = Regex.Replace(t, @"(?<![\p{L}\p{N}_])" + Regex.Escape(Environment.MachineName) + @"(?![\p{L}\p{N}_])", P, RegexOptions.IgnoreCase);
+            t = Regex.Replace(t, @"([A-Za-z]:\\Users\\)[^\\\s""'\u0001\u0002]+", "$1" + U, RegexOptions.IgnoreCase);       // any other user's profile folder
+            return t.Replace(U, "<user>").Replace(P, "<pc>");
         }
 
         public static string Build(FileReport r, string comment)

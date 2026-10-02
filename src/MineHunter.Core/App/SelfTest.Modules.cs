@@ -44,6 +44,7 @@ namespace MineHunter
                 GuardLogicChecks(rules);
                 GuardFileChecks(rules);
                 GuardSystemChecks(rules);
+                ProductSupportChecks(rules);
             }
             catch (Exception ex) { Check("module checks ran to the end", false, ex.ToString()); }
             finally

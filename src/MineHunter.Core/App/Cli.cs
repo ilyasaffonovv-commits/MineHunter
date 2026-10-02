@@ -15,7 +15,7 @@ using MineHunter.Util;
 
 namespace MineHunter
 {
-    public static class Cli
+    public static partial class Cli
     {
         static TextWriter O { get { return Console.Out; } }
 
@@ -23,7 +23,7 @@ namespace MineHunter
         {
             return @"MineHunter " + AppInfo.Version + @" - local anti-miner / persistence hunter (no telemetry)
 
-  MineHunter.exe                          open the window (auto-scan on start)
+  MineHunter.exe                          open the main window
   MineHunter.exe scan [options]           scan from the command line
         --quick | --full | --path <dir>   scope (default: --quick)
         --fix                             neutralise findings (default: High Risk and Malware; asks nothing only with --yes)
@@ -49,6 +49,8 @@ namespace MineHunter
 Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 confirmation needed.";
         }
 
+        public static string FullHelp() { return Help().Replace("\n  MineHunter.exe quarantine", HelpExtra() + "\n  MineHunter.exe quarantine"); }
+
         public static int Run(string[] args, AppConfig cfg)
         {
             try { Console.OutputEncoding = new UTF8Encoding(false); } catch { }
@@ -57,9 +59,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             {
                 switch (cmd)
                 {
-                    case "--help": case "-h": case "/?": case "help": O.WriteLine(Help()); return 0;
+                    case "--help": case "-h": case "/?": case "help": O.WriteLine(FullHelp()); return 0;
                     case "--version": case "-v": case "version": O.WriteLine("MineHunter " + AppInfo.Version); return 0;
-                    case "scan": return Scan(args.Skip(1).ToArray(), cfg);
+                    case "scan": { int tc; if (ScanTarget(args.Skip(1).ToArray(), cfg, out tc)) return tc; return Scan(args.Skip(1).ToArray(), cfg); }
                     case "quarantine": return QuarantineCmd(args.Skip(1).ToArray());
                     case "allow": return Allow(args.Skip(1).ToArray());
                     case "update-check": return UpdateCheck(cfg, false);
@@ -69,7 +71,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                     case "selftest": return SelfTest.Run(O);
                     case "--gen-signing-keys": Updater.GenerateKeys(args.Length > 1 ? args[1] : "."); O.WriteLine("keys written. KEEP update_private.xml SECRET; put the content of update_public.xml into config.json (updatePublicKeyXml)."); return 0;
                     case "--sign": O.WriteLine(Updater.Sign(args[1], args[2])); return 0;
-                    default: O.WriteLine("Unknown command: " + args[0] + "\n" + Help()); return 3;
+                    default:
+                        { int xc; if (RunExtra(cmd, args.Skip(1).ToArray(), cfg, out xc)) return xc; }
+                        O.WriteLine("Unknown command: " + args[0] + "\n" + FullHelp()); return 3;
                 }
             }
             catch (Exception ex) { Console.Error.WriteLine("ERROR: " + ex.Message); Log.Error(ex.ToString()); return 3; }
@@ -80,9 +84,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
 
         static int Scan(string[] a, AppConfig cfg)
         {
-            var opt = new ScanOptions();
-            if (Has(a, "--full")) opt.Mode = ScanMode.Full;
-            string path = Opt(a, "--path"); if (path != null) { opt.Mode = ScanMode.Custom; opt.CustomPath = path; }
+            // the same options the windows use (settings, sensitivity, exclusions), then the command-line switches on top
+            var opt = ScanProfiles.Build(Has(a, "--full") ? ScanMode.Full : ScanMode.Quick, Settings.Current, cfg);
+            string path = Opt(a, "--path"); if (path != null) { opt.Mode = ScanMode.Custom; opt.CustomPath = path; opt.CustomPaths = new List<string> { path }; }
             if (Has(a, "--no-browsers")) opt.Browsers = false;
             if (Has(a, "--no-memory")) opt.MemoryInspection = false;
             if (Has(a, "--no-files")) opt.ScanHotDirs = false;
@@ -168,6 +172,7 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             }
             string rdir = Opt(a, "--report-dir");
             string txt = ReportWriter.Write(res, outcomes, rdir);
+            try { if (!res.Aborted) { History.Add(History.FromResult(res, "cli", txt)); ResultSnapshot.Save(res); } } catch { }
             O.WriteLine("\nReport: " + txt + "   (+ report.json in the same folder)");
             string jcopy = Opt(a, "--json");
             if (jcopy != null) { File.WriteAllText(jcopy, Json.Pretty(Json.Serialize(ReportWriter.ToJson(res, outcomes))), new UTF8Encoding(false)); O.WriteLine("JSON: " + jcopy); }
