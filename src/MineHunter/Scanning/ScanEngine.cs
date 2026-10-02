@@ -43,6 +43,7 @@ namespace MineHunter.Scanning
             RulePack rules = RulePack.Load();
             var allow = Allowlist.Load();
             res.RulesVersion = rules.Version;
+            Perf.Reset();
             var ctx = new ScanContext(rules, allow, opt, ct);
             ctx.Progress = progress ?? ((s, p) => { });
             ctx.Report("Preparing...", 1);
@@ -114,6 +115,16 @@ namespace MineHunter.Scanning
             return res;
         }
 
+        /// <summary>Removes this process' own scan lock (called when the user closes the window or presses Ctrl+C in the middle of a scan: that is not a crash).</summary>
+        public static void ReleaseLock()
+        {
+            try
+            {
+                if (File.Exists(LockFile) && File.ReadAllText(LockFile).Contains("pid=" + Process.GetCurrentProcess().Id)) File.Delete(LockFile);
+            }
+            catch { }
+        }
+
         /// <summary>The lock file holds "... pid=N": if that process is still running, another MineHunter is scanning right now (not a crash).</summary>
         static bool LockOwnerAlive()
         {
@@ -133,6 +144,7 @@ namespace MineHunter.Scanning
 
         static void Stage(ScanContext ctx, string name, Action a)
         {
+            var sw = Stopwatch.StartNew();
             try { ctx.ThrowIfCancelled(); a(); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -140,6 +152,7 @@ namespace MineHunter.Scanning
                 Log.Error(name + ": " + ex.Message);
                 ctx.AddBlind(name, "stage failed: " + ex.GetType().Name + ": " + ex.Message);
             }
+            finally { ctx.Stats.StageSeconds[name] = sw.Elapsed.TotalSeconds; }
         }
 
         static void FillStatus(ScanContext ctx, ScanResult res)

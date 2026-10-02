@@ -38,6 +38,7 @@ namespace MineHunter.Scanning
         {
             var list = new List<StreamInfo>();
             WIN32_FIND_STREAM_DATA d;
+            System.Threading.Interlocked.Increment(ref Perf.StreamQueries);
             IntPtr h = FindFirstStreamW(path, 0, out d, 0);
             if (h == new IntPtr(-1)) return list;
             try

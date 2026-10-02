@@ -70,6 +70,7 @@ namespace MineHunter.Analysis
         /// <summary>Parses headers, section entropy, imports and overlay. Cheap: a few reads per file.</summary>
         public static PeInfo Analyze(string path, bool deep = true)
         {
+            System.Threading.Interlocked.Increment(ref Perf.PeParses); if (deep) System.Threading.Interlocked.Increment(ref Perf.PeDeepParses);
             var pe = new PeInfo();
             try
             {

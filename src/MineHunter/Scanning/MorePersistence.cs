@@ -55,9 +55,10 @@ namespace MineHunter.Scanning
               cmd: d => Path.IsPathRooted(d) ? d : Path.Combine(PathUtil.System32, @"spool\prtprocs\x64", d)),
         };
 
-        // classes whose per-user override is how UAC is bypassed or how every file of a kind is hijacked
+        // Classes whose per-user override is how UAC is bypassed or how every program that is started gets hooked. Ordinary software also registers per-user file types
+        // ("Open with ...", .ext -> its own ProgID, context-menu verbs on * and Directory): that is NOT an attack and is not looked at.
         static readonly HashSet<string> SensitiveClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        { "ms-settings", "mscfile", "exefile", "batfile", "cmdfile", "comfile", "Folder", "*", "AllFilesystemObjects", "Directory", "Drive", "CLSID_ShellLink", "lnkfile", "htmlfile", "txtfile", "ms-windows-store" };
+        { "ms-settings", "mscfile", "exefile", "batfile", "cmdfile", "comfile", "lnkfile", "ms-windows-store" };
 
         public static void Run(ScanContext ctx)
         {
@@ -220,8 +221,6 @@ namespace MineHunter.Scanning
                     {
                         if (c == null) continue;
                         var scan = new List<string> { name };
-                        string prog = Convert.ToString(c.GetValue(null));                        // .ext -> ProgID redirect
-                        if (name.StartsWith(".") && !string.IsNullOrWhiteSpace(prog) && !prog.Contains("\\")) scan.Add(prog);
                         foreach (var cn in scan)
                             using (var shell = cls.OpenSubKey(cn + @"\shell"))
                             {
@@ -237,6 +236,8 @@ namespace MineHunter.Scanning
                                         { string h, srv; cmd = TaskScanner.ResolveComClass(deleg, out h, out srv); valName = "DelegateExecute"; }
                                         if (string.IsNullOrWhiteSpace(cmd)) continue;
                                         bool uac = cn.Equals("ms-settings", StringComparison.OrdinalIgnoreCase) || cn.Equals("mscfile", StringComparison.OrdinalIgnoreCase);
+                                        // a file-type key of a made-up or ordinary extension is only interesting when what opens it is a script interpreter running something from a user folder
+                                        if (!sensitive && !Persist.IsLolbin(PathUtil.ExtractExecutable(cmd))) continue;
                                         bool plain = TrustedProgramOnly(ctx, cmd);
                                         string keyPath = @"Software\Classes\" + cn + @"\shell\" + verb + @"\command";
                                         var e = Persist.Evaluate(ctx, "reg2:" + hn + "\\" + keyPath, EntityKind.Registry, "Per-user handler: " + cn + " (" + verb + ")", hn + "\\" + keyPath, cmd, "per-user file-type handler", ev =>
@@ -289,7 +290,7 @@ namespace MineHunter.Scanning
                             if (impl != null && !TrustedProgramOnly(ctx, impl))
                             {
                                 var e = Persist.Evaluate(ctx, "reg2:" + hn + "\\" + kp, EntityKind.Registry, "COM redirection " + clsid, hn + "\\" + kp, impl, "per-user COM redirection", ev =>
-                                    ev.Add(new Evidence("REG.COM_TREATAS", EvidenceCategory.Persistence, 15, "A per-user COM class is redirected to another class (TreatAs), a way to swap the code that programs load", treat)));
+                                    ev.Add(new Evidence("REG.COM_TREATAS", EvidenceCategory.Persistence, 8, "A per-user COM class is redirected to another class (TreatAs), a way to swap the code that programs load", treat)));
                                 if (e != null) { e.Set("hive", hn); e.Set("key", kp); e.Set("value", ""); e.Set("data", treat); }
                             }
                         }

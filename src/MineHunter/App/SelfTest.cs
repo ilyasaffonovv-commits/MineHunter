@@ -355,7 +355,10 @@ namespace MineHunter
                     fm.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\notepad.exe").SetValue("VerifierDlls", dll);
                     fu.CreateSubKey(@"Software\Classes\ms-settings\shell\open\command").SetValue(null, "\"" + payload + "\"");
                     fu.CreateSubKey(@"Software\Classes\ms-settings\shell\open\command").SetValue("DelegateExecute", "");
-                    fu.CreateSubKey(@"Software\Classes\.mlabx\shell\open\command").SetValue(null, "\"" + payload + "\" \"%1\"");
+                    fu.CreateSubKey(@"Software\Classes\.mlabx\shell\open\command").SetValue(null, "cmd.exe /c \"" + payload + "\" \"%1\"");                // a script interpreter that runs a program from a user folder
+                    fu.CreateSubKey(@"Software\Classes\.mlaby\shell\open\command").SetValue(null, "\"" + payload + "\" \"%1\"");                           // an unsigned program registered for its own file type: ordinary
+                    fu.CreateSubKey(@"Software\Classes\.mlabz").SetValue(null, "Vendor.Document");                                                              // .ext -> ProgID of the program: ordinary
+                    fu.CreateSubKey(@"Software\Classes\*\shell\Edit with Tool\command").SetValue(null, "\"" + payload + "\" \"%1\"");                       // "Open with" verb of an editor: ordinary
                     fu.CreateSubKey(@"Software\Classes\Vendor.Document\shell\open\command").SetValue(null, "\"" + payload + "\" \"%1\"");              // an ordinary per-user program association: not looked at
                     fu.CreateSubKey(@"Software\Classes\exefile\shell\open\command").SetValue(null, "\"" + Path.Combine(PathUtil.System32, "notepad.exe") + "\" \"%1\"");   // overridden, but with a signed program
                     fu.CreateSubKey(@"Software\Classes\CLSID\{BBBBBBBB-0000-0000-0000-000000000002}\ScriptletURL").SetValue(null, "script:file:///" + tmp.Replace('\\', '/') + "/x.sct");
@@ -379,7 +382,8 @@ namespace MineHunter
                     Check("autostart: an IFEO verifier DLL", HasRule(byKey("VerifierDlls"), "REG.IFEO_VERIFIER"));
                     var ms = byKey(@"ms-settings\shell\open\command");
                     Check("autostart: a per-user ms-settings override (the UAC bypass) is reported strongly and carries what is needed to remove it", HasRule(ms, "REG.HANDLER_HIJACK") && ms.Evidence.First(x => x.RuleId == "REG.HANDLER_HIJACK").Weight == 35 && removable(ms, ""));
-                    Check("autostart: a per-user override for a file extension", HasRule(byKey(@".mlabx\shell"), "REG.HANDLER_HIJACK"));
+                    Check("autostart: a file type that is opened by a script interpreter running a program from a user folder is reported", HasRule(byKey(@".mlabx\shell"), "REG.HANDLER_HIJACK"));
+                    Check("autostart: ordinary per-user file types, ProgID associations and Open-with verbs of programs are NOT reported (they are what installed software does)", byKey(@".mlaby\shell") == null && byKey(@".mlabz") == null && byKey(@"*\shell") == null && byKey("Vendor.Document") == null);
                     Check("autostart: an ordinary program association (a program's own ProgID) is not looked at", byKey("Vendor.Document") == null);
                     Check("autostart: an override that starts a signed Windows program is not reported", byKey(@"exefile\shell") == null);
                     Check("autostart: a per-user COM class that runs a scriptlet, and a per-user COM handler DLL", HasRule(byKey("ScriptletURL"), "REG.COM_SCRIPTLET") && byKey("InprocHandler32") != null);
@@ -600,6 +604,72 @@ namespace MineHunter
             }
         }
 
+        /// <summary>False-positive resistance, round two: the combinations of signals that ordinary programs really produce (launchers, games, developer tools, installers,
+        /// browsers) must stay below the verdicts that lead to removal, and ordinary command lines must not match the rules that condemn.</summary>
+        static void FalsePositiveChecks(RulePack rules)
+        {
+            W.WriteLine("\nFalse-positive resistance (what ordinary software looks like)");
+            Func<string, int, EvidenceCategory, Evidence> ev = (id, wgt, cat) => E(id, cat, wgt);
+            // a game launcher: unsigned, in AppData, busy, keeps a connection open, starts a Java process that has a window
+            var launcher = Ent(EntityKind.File, "launcher.exe", ev("SIG.UNSIGNED", 6, EvidenceCategory.Signature), ev("LOC.APPDATA", 4, EvidenceCategory.Location));
+            var launcherProc = Ent(EntityKind.Process, "launcher.exe", ev("BEH.CPU_SUSTAINED", 12, EvidenceCategory.Behavior), ev("NET.PERSISTENT_UNTRUSTED", 4, EvidenceCategory.Network));
+            Check("an unsigned game launcher that is busy and connected is not a finding", V(launcher, launcherProc) == Verdict.Clean);
+            // the same, but without a window: the miner profile (unsigned + user folder + no window + load + public connection) is a Suspicious note at most
+            var hidden = Ent(EntityKind.Process, "tray.exe", ev("BEH.CPU_SUSTAINED", 12, EvidenceCategory.Behavior), ev("BEH.CPU_NO_WINDOW", 4, EvidenceCategory.Behavior), ev("NET.PERSISTENT_UNTRUSTED", 4, EvidenceCategory.Network), ev("BEH.MINER_PROFILE", 22, EvidenceCategory.Network));
+            Check("a windowless unsigned program that matches the miner profile is Suspicious at most, never High Risk", V(launcher, hidden) <= Verdict.Suspicious);
+            // an installer: packed, unsigned, in Downloads
+            Check("a packed unsigned installer in Downloads is not a finding", V(Ent(EntityKind.File, "setup.exe", ev("SIG.UNSIGNED", 6, EvidenceCategory.Signature), ev("PE.HIGH_ENTROPY", 7, EvidenceCategory.Content), ev("PE.PACKED", 5, EvidenceCategory.Content), ev("PE.HUGE_OVERLAY", 6, EvidenceCategory.Content), ev("LOC.DOWNLOADS", 3, EvidenceCategory.Location))) == Verdict.Clean);
+            // a JIT or a game's anti-cheat: threads that start in private memory
+            Check("orphan threads alone (a JIT compiler, an anti-cheat) are not a finding", V(Ent(EntityKind.Process, "game.exe", ev("PROC.ORPHAN_THREADS", 10, EvidenceCategory.Behavior))) == Verdict.Clean);
+            // the user excluded a game folder from Defender
+            Check("a Defender exclusion for a user folder alone is not a finding", V(Ent(EntityKind.DefenderExclusion, "excl", ev("TAMPER.DEF_EXCL_USERPATH", 8, EvidenceCategory.Tamper))) == Verdict.Clean);
+            // a portable tool that starts itself at logon
+            Check("an unsigned program that starts at logon from AppData is Suspicious at most", V(Ent(EntityKind.RunKey, "tool", ev("PERSIST.TARGET_USER_PATH", 10, EvidenceCategory.Persistence)), Ent(EntityKind.File, "tool.exe", ev("SIG.UNSIGNED", 6, EvidenceCategory.Signature), ev("LOC.APPDATA", 4, EvidenceCategory.Location))) <= Verdict.Suspicious);
+            // an autostart entry that is missing its target (a program that was uninstalled)
+            Check("an autostart entry whose program is gone is not a finding", V(Ent(EntityKind.RunKey, "old", ev("PERSIST.TARGET_MISSING", 3, EvidenceCategory.Persistence))) == Verdict.Clean);
+            // a service-style tool from a user folder with a restart policy
+            Check("a self-restarting unsigned service in a user folder needs more than that to be High Risk", V(Ent(EntityKind.Service, "svc", ev("SVC.IMAGE_USER_PATH", 22, EvidenceCategory.Persistence), ev("SVC.AUTO_RESTART_UNTRUSTED", 8, EvidenceCategory.Persistence)), Ent(EntityKind.File, "svc.exe", ev("SIG.UNSIGNED", 6, EvidenceCategory.Signature), ev("LOC.APPDATA", 4, EvidenceCategory.Location))) <= Verdict.Suspicious);
+
+            // ordinary command lines: none may reach a rule that condemns (weight 20 and above, or a definitive one)
+            string[] benign =
+            {
+                "\"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" --profile-directory=\"Default\" --no-first-run --enable-features=NetworkService",
+                "\"C:\\Program Files\\Microsoft VS Code\\Code.exe\" --crash-reporter-id 1234 --type=renderer --enable-sandbox",
+                "\"C:\\Users\\Me\\AppData\\Local\\Discord\\app-1.0.9\\Discord.exe\" --type=gpu-process --field-trial-handle=1234",
+                "\"C:\\Program Files (x86)\\Steam\\steamwebhelper.exe\" -lang=en_US -cachedir=\"C:\\Users\\Me\\AppData\\Local\\Steam\\htmlcache\" -steampid=1234",
+                "\"C:\\Program Files\\Java\\jre\\bin\\javaw.exe\" -Xmx4G -Xms1G -Djava.library.path=natives -cp client.jar net.minecraft.client.main.Main --username Me --version 1.20.1 --gameDir C:\\Users\\Me\\AppData\\Roaming\\.minecraft",
+                "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\Me\\Documents\\build.ps1 -Configuration Release",
+                "powershell.exe -NoLogo -Command \"Get-ChildItem C:\\Users\\Me\\Downloads | Sort-Object Length -Descending | Select-Object -First 10\"",
+                "cmd.exe /c start \"\" \"C:\\Users\\Me\\Desktop\\notes.txt\"",
+                "cmd.exe /c \"C:\\Program Files\\nodejs\\npm.cmd\" run build",
+                "python.exe -m pip install --upgrade pip requests numpy",
+                "node.exe C:\\Users\\Me\\project\\server.js --port 8080",
+                "git.exe pull --rebase origin main",
+                "msiexec.exe /i C:\\Users\\Me\\Downloads\\app-installer.msi /qn /norestart",
+                "rundll32.exe shell32.dll,Control_RunDLL desk.cpl",
+                "rundll32.exe C:\\Windows\\System32\\shell32.dll,SHCreateLocalServerRunDll {c82192ee-6cb5-4bc0-9ef0-fb818773790a}",
+                "regsvr32.exe /s \"C:\\Program Files\\Vendor\\shellext.dll\"",
+                "schtasks.exe /query /fo list /v",
+                "wmic.exe cpu get name,numberofcores",
+                "certutil.exe -hashfile C:\\Users\\Me\\Downloads\\file.iso SHA256",
+                "taskkill.exe /f /im chrome.exe",
+                "powercfg.exe /list",
+                "curl.exe -L -o C:\\Users\\Me\\Downloads\\release.zip https://github.com/vendor/project/releases/download/v1.0/release.zip",
+                "\"C:\\Program Files\\NVIDIA Corporation\\NVIDIA GeForce Experience\\NVIDIA Share.exe\" -shared 1",
+                "\"C:\\Program Files\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe\" -SaveToUserDir",
+                "\"C:\\Windows\\System32\\svchost.exe\" -k NetworkService -p -s Dnscache",
+                "sc.exe query type= service state= all",
+                "netsh.exe advfirewall show allprofiles",
+                "attrib.exe +r C:\\Users\\Me\\Documents\\final.docx",
+                "bitsadmin.exe /list /allusers",
+            };
+            var worst = new List<string>();
+            foreach (var cl in benign)
+                foreach (var r in rules.CmdRules)
+                    if (r.Rx.IsMatch(cl) && (r.Weight >= 20 || r.Definitive)) worst.Add(r.Id + " <- " + Text.Trunc(cl, 60));
+            Check("ordinary command lines (browsers, IDEs, launchers, Java, Python, Node, git, installers, admin tools) match no condemning rule", worst.Count == 0, string.Join("; ", worst.Take(5)));
+        }
+
         public static int Run(TextWriter w)
         {
             W = w; passed = failed = 0;
@@ -696,6 +766,8 @@ namespace MineHunter
             Check("known-bad hash alone = Malware", V(Ent(EntityKind.File, "h", E("REP.KNOWN_BAD_HASH", EvidenceCategory.Reputation, 100, true))) == Verdict.Malware);
             Check("Trust evidence lowers the file's own evidence but never a process's behaviour",
                   RiskEngine.Compute(new[] { Ent(EntityKind.Process, "hollow", E("PROC.HOLLOW.IMAGE_MISMATCH", EvidenceCategory.Behavior, 62, true)) }).Total >= 60);
+
+            FalsePositiveChecks(rules);
 
             w.WriteLine("\nDecision safety");
             Check("critical Windows processes are never killed", Decision.IsProtectedProcess(Ent(EntityKind.Process, "csrss.exe")) && Decision.IsProtectedProcess(Ent(EntityKind.Process, "lsass.exe")));

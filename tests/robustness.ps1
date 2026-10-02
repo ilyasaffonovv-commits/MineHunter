@@ -1,7 +1,7 @@
 <#
   robustness.ps1 - feeds the file scanner things that tend to hang or crash scanners, and checks that MineHunter finishes with a valid report.
 
-  Creates (only inside its own temp folder):  a truncated and a zero-byte .exe, random bytes named .dll, a corrupt .zip, a 3 GB sparse .exe,
+  Creates (only inside its own temp folder):  a truncated and a zero-byte .exe, random bytes named .dll, a corrupt .zip, a 5 GB sparse .exe,
   an exe held open by another process (exclusive lock), a path longer than 260 characters, a folder with 15 000 files, a directory junction that
   points back at its own parent (endless recursion if followed) and a 2 MB binary named config.json.
   Then runs  MineHunter-cli.exe scan --path <folder>  and reports: exit code, duration, peak memory, whether report.json parses.
@@ -38,7 +38,7 @@ try {
     $sparse = Join-Path $data 'huge_sparse.exe'
     [IO.File]::WriteAllBytes($sparse, [byte[]](0x4D, 0x5A, 0, 0))
     & fsutil sparse setflag $sparse | Out-Null
-    $fs = [IO.File]::Open($sparse, 'Open', 'ReadWrite', 'ReadWrite'); $fs.SetLength(3GB); $fs.Close()
+    $fs = [IO.File]::Open($sparse, 'Open', 'ReadWrite', 'ReadWrite'); $fs.SetLength(5GB); $fs.Close()      # more than 4 GB
     # 6: exclusive lock
     $locked = Join-Path $data 'locked.exe'; Copy-Item $notepad $locked
     $lockStream = [IO.File]::Open($locked, 'Open', 'Read', 'None')
@@ -55,6 +55,12 @@ try {
     $bigcfg = New-Object byte[] (2MB); (New-Object Random 3).NextBytes($bigcfg)
     [IO.File]::WriteAllBytes((Join-Path $data 'config.json'), $bigcfg)
 
+    # 11: Unicode names: Cyrillic, Japanese, an emoji, a right-to-left override, and a name with a trailing dot (only possible with the extended prefix)
+    $uni = (-join [char[]](0x0444, 0x0430, 0x0439, 0x043B)) + '-' + (-join [char[]](0x65E5, 0x672C, 0x8A9E)) + '-' + [char]::ConvertFromUtf32(0x1F600)
+    $stub = ([IO.File]::ReadAllBytes($notepad))[0..4095]
+    [IO.File]::WriteAllBytes((Join-Path $data ($uni + '.exe')), $stub)
+    [IO.File]::WriteAllBytes((Join-Path $data ('invoice' + [char]0x202E + 'txt.exe')), $stub)
+    [IO.File]::WriteAllBytes(('\\?\' + (Join-Path $data 'trailing.exe.')), $stub)
     # run the scan, sample its memory
     $args = @('scan', '--path', $data, '--no-memory', '--no-browsers', '--no-cache', '--report-dir', $out, '--quiet')
     $psi = New-Object Diagnostics.ProcessStartInfo $Exe
@@ -79,7 +85,9 @@ try {
         Note 'report.json is written and valid' $ok $detail
         Note 'peak memory stays reasonable (< 700 MB)' ($peak -lt 700MB) ("{0:N0} MB" -f ($peak / 1MB))
         $txt = $so.Result + $se.Result
-        Note 'no unhandled exception text in the output' (($txt -notmatch 'Unhandled|Необработанное|StackOverflow|at MineHunter\.') ) ($(if ($txt -match 'Unhandled|Необработанное') { 'exception printed' } else { '' }))
+        $ru = -join [char[]](0x041D, 0x0435, 0x043E, 0x0431, 0x0440, 0x0430, 0x0431, 0x043E, 0x0442, 0x0430, 0x043D, 0x043D, 0x043E, 0x0435)       # the .NET message in a Russian Windows
+        $bad = $txt -match ('Unhandled|' + $ru + '|StackOverflow|at MineHunter\.')
+        Note 'no unhandled exception text in the output' (-not $bad) $(if ($bad) { 'exception printed' } else { '' })
     }
 }
 finally {

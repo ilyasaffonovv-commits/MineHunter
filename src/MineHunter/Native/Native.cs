@@ -426,7 +426,8 @@ namespace MineHunter.Native
             string key;
             try { var fi = new System.IO.FileInfo(path); if (!fi.Exists) return new TrustInfo { State = TrustState.Error }; key = path + "|" + fi.Length + "|" + fi.LastWriteTimeUtc.Ticks; }
             catch { return new TrustInfo { State = TrustState.Error }; }
-            lock (Lock) { TrustInfo c; if (Cache.TryGetValue(key, out c)) return c; }
+            lock (Lock) { TrustInfo c; if (Cache.TryGetValue(key, out c)) { System.Threading.Interlocked.Increment(ref MineHunter.Util.Perf.TrustCacheHits); return c; } }
+            System.Threading.Interlocked.Increment(ref MineHunter.Util.Perf.TrustChecks);
             var r = WinTrust.Check(path);
             lock (Lock) { Cache[key] = r; }
             return r;

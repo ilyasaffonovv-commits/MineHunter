@@ -178,7 +178,7 @@ namespace MineHunter.Gui
         void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (_mode == Mode.Cleaning) { e.Cancel = true; MessageBox.Show(W, L("Neutralizing is in progress. Please wait until it finishes.", "Идёт обезвреживание. Подождите, пока оно закончится."), "MineHunter", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-            if (_cts != null) _cts.Cancel();
+            if (_cts != null) { _cts.Cancel(); ScanEngine.ReleaseLock(); }
         }
 
         // ============================================================================================ language / static texts
@@ -479,7 +479,7 @@ namespace MineHunter.Gui
                 foreach (var f in _res.Findings)
                 {
                     var acc = AccentOf(f.Verdict);
-                    items.Add(new ResultItem { F = f, Title = Loc.Title(f.Title), Sub = MainLocation(f), VerdictText = Loc.Verdict(f.Verdict), ScoreText = f.Score.ToString(), Accent = acc, AccentSoft = Soft(acc) });
+                    items.Add(new ResultItem { F = f, Title = Loc.Title(f.Title), Sub = MainLocation(f), VerdictText = f.ToolClass != null ? L("GAME CHEAT  ·  KEPT", "ЧИТ  ·  ОСТАВЛЕНО") : Loc.Severity(f.Verdict).ToUpperInvariant(), ScoreText = f.Score.ToString(), Accent = acc, AccentSoft = Soft(acc) });
                 }
                 if (CkNotes.IsChecked == true)
                     foreach (var n in _res.Observations)
@@ -539,11 +539,11 @@ namespace MineHunter.Gui
             var P = DetailPanel; P.Children.Clear();
             var acc = AccentOf(f.Verdict);
             var top = new StackPanel { Orientation = Orientation.Horizontal };
-            top.Children.Add(Badge(Loc.Verdict(f.Verdict), acc));
+            top.Children.Add(Badge(f.ToolClass != null ? L("GAME CHEAT  ·  KEPT", "ЧИТ  ·  ОСТАВЛЕНО") : Loc.Severity(f.Verdict).ToUpperInvariant() + "  ·  " + Loc.Verdict(f.Verdict), acc));
             top.Children.Add(new Border { Margin = new Thickness(8, 0, 0, 0), CornerRadius = new CornerRadius(12), Background = Res("Surface2") as Brush, Padding = new Thickness(11, 3, 11, 3), Child = Tb(L("score ", "балл ") + f.Score + " / 100", 11.5, Res("Muted"), FontWeights.SemiBold) });
             P.Children.Add(top);
             P.Children.Add(Tb(Loc.Title(f.Title), 21, null, FontWeights.Bold, new Thickness(0, 10, 0, 0)));
-            P.Children.Add(Tb(Loc.VerdictMeaning(f.Verdict), 13, Res("Muted"), null, new Thickness(0, 6, 0, 0)));
+            P.Children.Add(Tb(f.ToolClass != null ? Loc.Recommendation(f) : Loc.VerdictMeaning(f.Verdict), 13, Res("Muted"), null, new Thickness(0, 6, 0, 0)));
             P.Children.Add(ScoreBar(f.Score, acc));
 
             // what / where
@@ -749,7 +749,7 @@ namespace MineHunter.Gui
                 var o = c.Outcome; Brush acc = o.Verdict == "Remediated" ? GraphView.Good : o.Verdict == "RebootRequired" ? GraphView.Warn : o.Verdict == "Partial" ? GraphView.Orange : GraphView.Bad;
                 string vt = o.Verdict == "Remediated" ? L("REMOVED AND VERIFIED", "УДАЛЕНО И ПРОВЕРЕНО") : o.Verdict == "RebootRequired" ? L("RESTART REQUIRED", "НУЖНА ПЕРЕЗАГРУЗКА") : o.Verdict == "Partial" ? L("PARTIALLY", "ЧАСТИЧНО") : L("NOT DONE", "НЕ ВЫПОЛНЕНО");
                 P.Children.Add(Head(Loc.Title(c.F.Title)));
-                P.Children.Add(Badge(vt, acc));
+                P.Children.Add(Badge(Loc.Severity(c.F.Verdict).ToUpperInvariant() + "  ·  " + vt, acc));
                 P.Children.Add(Tb(Loc.RescanNote(o.RescanNote) ?? "", 12.5, Res("Muted"), null, new Thickness(0, 6, 0, 0)));
                 foreach (var s in o.StillPresent) P.Children.Add(Tb("• " + s, 12, GraphView.Orange, null, new Thickness(0, 2, 0, 0)));
                 if (o.Outcome != null)

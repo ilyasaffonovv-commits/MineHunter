@@ -118,12 +118,28 @@ namespace MineHunter.Scanning
 
         static double CpuThreshold(ScanContext ctx) { return ctx.CoreCount <= 4 ? 45 : 22; }
 
+        /// <summary>Rules that mean "foreign code lives inside this process": a miner that was injected into or hollowed out of a signed Windows program has a trusted image, so the
+        /// image's signature says nothing about it. Such a process is read for miner markers although it is "trusted".</summary>
+        static readonly string[] InjectionRules = { "PROC.PE_IN_PRIVATE_MEMORY", "PROC.ORPHAN_THREADS", "PROC.HOLLOW", "PROC.SIDELOAD_CANDIDATE", "PROC.SYSTEM_PROC_UNSIGNED_MODULE", "PROC.SUSPENDED_LOLBIN", "NET.SYSTEM_TOOL_EXTERNAL" };
+
+        static bool InjectionFlagged(ProcInfo p)
+        {
+            return p.Entity != null && p.Entity.Evidence.Any(x => x.Weight > 0 && InjectionRules.Any(r => x.RuleId.StartsWith(r, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        internal static List<ProcInfo> Candidates(ScanContext ctx, List<ProcInfo> procs)
+        {
+            return procs.Where(p => !Exempt(ctx, p) &&
+                ((Untrusted(p) && (UserWritableOrUnknown(p) || p.ExternalConnections > 0 || p.CpuPercent >= CpuThreshold(ctx) || p.GpuPercent >= 35))
+                 || (!Untrusted(p) && p.Entity.Evidence.Any(x => x.Weight > 0 && InjectionRules.Any(r => x.RuleId.StartsWith(r, StringComparison.OrdinalIgnoreCase)))))).ToList();
+        }
+
         public static void Run(ScanContext ctx, List<ProcInfo> procs)
         {
             foreach (var p in procs) { if (Exempt(ctx, p)) continue; try { Cheap(ctx, p); } catch (Exception ex) { Log.Warn("profile " + p.Name + ": " + ex.Message); } }
 
             // expensive checks (reading process memory and the folder next to the program) only for programs that could plausibly be a miner
-            var cands = procs.Where(p => !Exempt(ctx, p) && Untrusted(p) && (UserWritableOrUnknown(p) || p.ExternalConnections > 0 || p.CpuPercent >= CpuThreshold(ctx) || p.GpuPercent >= 35)).ToList();
+            var cands = Candidates(ctx, procs);
             ctx.Stats.MemoryScanCandidates = cands.Count;
             var sw = Stopwatch.StartNew();
             long totalBytes = 0;
@@ -142,7 +158,7 @@ namespace MineHunter.Scanning
                             ScanMemory(ctx, p, out read);
                             Interlocked.Add(ref totalBytes, read);
                         }
-                        ScanConfigFiles(ctx, p);
+                        if (Untrusted(p)) ScanConfigFiles(ctx, p);
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex) { Log.Warn("profile scan " + p.Name + ": " + ex.Message); }
@@ -240,11 +256,13 @@ namespace MineHunter.Scanning
             int groups = byGroup.Count(kv => kv.Key != "tuning" && kv.Value.Count > 0);
             bool proto = byGroup.ContainsKey("protocol");
             string sample = string.Join(", ", byGroup.SelectMany(kv => kv.Value).Take(8));
-            // memory is noisier than a file (a browser tab, a log, a document can hold a few of these words): only a real mix counts
+            // Memory is noisier than a file: a chat, an editor, a browser tab, a log or a security tool can hold all of these words without being a miner. The words alone
+            // therefore only count as a note; they count fully when the program is also doing what a miner does (using the CPU or GPU).
+            bool working = p.CpuPercent >= 8 || p.GpuPercent >= 15 || InjectionFlagged(p);
             if (proto && distinct >= 3 && groups >= 2)
-                p.Entity.Add(new Evidence("PROC.MEM.MINER_STRONG", EvidenceCategory.Content, 45, "The program's memory holds cryptominer protocol, algorithm and program markers (" + distinct + ") - what a packed miner looks like after it unpacks itself", sample));
+                p.Entity.Add(new Evidence("PROC.MEM.MINER_STRONG", EvidenceCategory.Content, working ? 45 : 14, "The program's memory holds cryptominer protocol, algorithm and program markers (" + distinct + ") - what a packed miner looks like after it unpacks itself" + (working ? "" : ". The program is idle, so this may just be a document, a chat or a log that mentions them"), sample));
             else if (distinct >= 4 && groups >= 2)
-                p.Entity.Add(new Evidence("PROC.MEM.MINER_MANY", EvidenceCategory.Content, 32, "The program's memory holds many cryptominer markers (" + distinct + ")", sample));
+                p.Entity.Add(new Evidence("PROC.MEM.MINER_MANY", EvidenceCategory.Content, working ? 32 : 10, "The program's memory holds many cryptominer markers (" + distinct + ")" + (working ? "" : ". The program is idle, so this may just be a document, a chat or a log that mentions them"), sample));
             return true;
         }
 

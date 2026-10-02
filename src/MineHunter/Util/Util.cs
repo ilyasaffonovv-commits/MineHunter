@@ -289,6 +289,17 @@ namespace MineHunter.Util
         public static string SafeFileName(string p) { try { return Path.GetFileName(p ?? ""); } catch { return p ?? ""; } }
     }
 
+    /// <summary>Counters that show where a scan spends its effort (reported with --perf and in the JSON report): repeated work shows up as a number that is too high.</summary>
+    public static class Perf
+    {
+        public static long TrustChecks, TrustCacheHits, PeParses, PeDeepParses, Sha256Calls, Sha256Bytes, StringScans, DirsListed, StreamQueries;
+        public static void Reset() { TrustChecks = TrustCacheHits = PeParses = PeDeepParses = Sha256Calls = Sha256Bytes = StringScans = DirsListed = StreamQueries = 0; }
+        public static Dictionary<string, object> Snapshot()
+        {
+            return new Dictionary<string, object> { { "trustChecks", TrustChecks }, { "trustCacheHits", TrustCacheHits }, { "peParses", PeParses }, { "peDeepParses", PeDeepParses }, { "sha256Calls", Sha256Calls }, { "sha256MegaBytes", Sha256Bytes / 1048576 }, { "stringScans", StringScans }, { "directoriesListed", DirsListed }, { "streamQueries", StreamQueries } };
+        }
+    }
+
     public static class Hashing
     {
         public static string Sha256(string path, long maxBytes = long.MaxValue)
@@ -298,7 +309,7 @@ namespace MineHunter.Util
                 using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16, FileOptions.SequentialScan))
                 using (var sha = SHA256.Create())
                 {
-                    if (fs.Length <= maxBytes) return Hex(sha.ComputeHash(fs));
+                    if (fs.Length <= maxBytes) { System.Threading.Interlocked.Increment(ref Perf.Sha256Calls); System.Threading.Interlocked.Add(ref Perf.Sha256Bytes, fs.Length); return Hex(sha.ComputeHash(fs)); }
                     return null;
                 }
             }
@@ -462,6 +473,7 @@ namespace MineHunter.Util
             while (stack.Count > 0)
             {
                 var cur = stack.Pop();
+                System.Threading.Interlocked.Increment(ref Perf.DirsListed);
                 string[] files = null, dirs = null;
                 try { files = Directory.GetFiles(cur.Key); } catch (Exception e) { if (onDenied != null && e is UnauthorizedAccessException) onDenied(cur.Key); }
                 if (files != null)

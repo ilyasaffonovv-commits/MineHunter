@@ -11,12 +11,13 @@
 //              clearly labelled config.json next to itself - what a packed miner looks like after it unpacks. Nothing is executed or contacted.
 //
 // Hard safety rules (enforced in code):
-//   * every mode terminates by itself: default 30 s, absolute maximum 60 s
+//   * every mode terminates by itself: default 30 s, absolute maximum 300 s
 //   * CPU load runs on BelowNormal threads; total memory hold is capped at 1024 MB
 //   * sockets are only ever opened to / listened on 127.0.0.1
 //   * a kill-switch file (MinerLab.STOP in %TEMP%\MinerLab or %ProgramData%\MinerLab) ends every mode within 1 s
 //   * launcher refuses to start anything that is not a hash-identical copy of itself
-//   * no network access to anything but loopback, no file writes except its own optional log and (memmark --cfg) a labelled config.json in its own folder, removed on exit
+//   * no network access to anything but loopback, no file writes except its own optional log, (memmark --cfg) a labelled config.json in its own folder removed on exit,
+//     and (respawn) one copy of a harness file at a path that has "MinerLab" in its name
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -33,7 +34,7 @@ namespace MinerLab
     internal static class Program
     {
         const int DefaultSeconds = 30;
-        const int MaxSeconds = 60;
+        const int MaxSeconds = 300;      // hard stop for every mode (the lab scripts ask for 15-60 s; the adversarial suite keeps a watchdog alive through one cleaning round)
         const int MaxMemMb = 1024;
 
         static readonly DateTime Started = DateTime.UtcNow;
@@ -91,6 +92,11 @@ namespace MinerLab
                     break;
                 case "launcher":
                     if (o.ContainsKey("child")) StartChild(o["child"], ChildArgs(o));
+                    break;
+                case "respawn":
+                    // a watchdog: puts a copy of --source back at --target whenever the file is missing (only below a folder with "MinerLab" in its name)
+                    if (o.ContainsKey("source") && o.ContainsKey("target") && o["target"].IndexOf("MinerLab", StringComparison.OrdinalIgnoreCase) >= 0)
+                    { var rt = new Thread(() => Respawn(o["source"], o["target"])) { IsBackground = true }; rt.Start(); threads.Add(rt); }
                     break;
                 case "server":
                     if (port > 0) { var t = new Thread(() => LoopbackServer(port)) { IsBackground = true }; t.Start(); threads.Add(t); }
@@ -181,6 +187,15 @@ namespace MinerLab
                     }
                 }
                 catch { Thread.Sleep(1000); }
+            }
+        }
+
+        static void Respawn(string source, string target)
+        {
+            while (!stop)
+            {
+                try { if (!File.Exists(target) && File.Exists(source)) { Directory.CreateDirectory(Path.GetDirectoryName(target)); File.Copy(source, target); } } catch { }
+                Thread.Sleep(500);
             }
         }
 

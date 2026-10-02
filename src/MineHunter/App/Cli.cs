@@ -92,9 +92,18 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             int lastPct = -1; string lastMsg = "";
             Action<string, int> prog = (s, p) => { if (quiet) return; if (p / 5 != lastPct / 5 || s != lastMsg && p == 100) { lastPct = p; lastMsg = s; Console.Error.WriteLine("  [" + p.ToString().PadLeft(3) + "%] " + s); } };
             O.WriteLine("MineHunter " + AppInfo.Version + "  " + opt.Mode + " scan" + (path != null ? " of " + path : "") + " ...");
-            var res = ScanEngine.Run(opt, CancellationToken.None, prog);
+            // Ctrl+C ends the scan cleanly (partial results are still reported); it never interrupts the cleaning once that has started
+            var cts = new CancellationTokenSource();
+            ConsoleCancelEventHandler onCancel = (s, e) => { e.Cancel = true; cts.Cancel(); try { Console.Error.WriteLine("  Cancelling the scan ..."); } catch { } };
+            Console.CancelKeyPress += onCancel;
+            ScanResult res;
+            try { res = ScanEngine.Run(opt, cts.Token, prog); }
+            finally { ScanEngine.ReleaseLock(); }
             if (!quiet) Print(res);
+            if (res.Aborted && Has(a, "--fix")) { O.WriteLine("\nThe scan was cancelled: nothing was changed (cleaning is only done on a complete scan)."); Console.CancelKeyPress -= onCancel; return 3; }
 
+            string dump = Opt(a, "--dump");
+            if (dump != null) WriteDump(dump);
             List<FindingOutcome> outcomes = null;
             if (Has(a, "--fix"))
             {
@@ -160,23 +169,24 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
             string rdir = Opt(a, "--report-dir");
             string txt = ReportWriter.Write(res, outcomes, rdir);
             O.WriteLine("\nReport: " + txt + "   (+ report.json in the same folder)");
-            string dump = Opt(a, "--dump");
-            if (dump != null)
-            {
-                // research aid: every entity the scan saw, with its evidence (also those that never became a finding)
-                var all = ScanEngine.LastContext.Entities.Values.OrderByDescending(e => e.Score).Select(e => new Dictionary<string, object>
-                {
-                    { "id", e.Id }, { "kind", e.Kind.ToString() }, { "title", e.Title }, { "location", e.Location }, { "score", e.Score }, { "trusted", e.Trusted }, { "sha256", e.Sha256 },
-                    { "props", e.Props.Where(p => p.Key != "sections" && p.Key != "imports").ToDictionary(p => p.Key, p => (object)p.Value) },
-                    { "evidence", e.Evidence.Select(v => new Dictionary<string, object> { { "rule", v.RuleId }, { "category", v.Category.ToString() }, { "weight", v.Weight }, { "definitive", v.Definitive }, { "text", v.Text }, { "detail", v.Detail } }).ToArray() }
-                }).ToArray();
-                File.WriteAllText(dump, Json.Pretty(Json.Serialize(all)), new UTF8Encoding(false));
-                File.WriteAllText(Path.ChangeExtension(dump, ".links.json"), Json.Pretty(Json.Serialize(ScanEngine.LastContext.Links.Select(l => new Dictionary<string, object> { { "from", l.From }, { "to", l.To }, { "rel", l.Relation } }).ToArray())), new UTF8Encoding(false));
-                O.WriteLine("Entity dump: " + dump + " (" + all.Length + " entities)");
-            }
             string jcopy = Opt(a, "--json");
             if (jcopy != null) { File.WriteAllText(jcopy, Json.Pretty(Json.Serialize(ReportWriter.ToJson(res, outcomes))), new UTF8Encoding(false)); O.WriteLine("JSON: " + jcopy); }
             return res.Findings.Any(f => f.Verdict >= Verdict.HighRisk) ? 2 : res.Findings.Any() ? 1 : 0;
+        }
+
+        /// <summary>Research aid: every entity the scan saw, with its evidence (also those that never became a finding).</summary>
+        static void WriteDump(string dump)
+        {
+            try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dump))); } catch { }
+            var all = ScanEngine.LastContext.Entities.Values.OrderByDescending(e => e.Score).Select(e => new Dictionary<string, object>
+            {
+                { "id", e.Id }, { "kind", e.Kind.ToString() }, { "title", e.Title }, { "location", e.Location }, { "score", e.Score }, { "trusted", e.Trusted }, { "sha256", e.Sha256 },
+                { "props", e.Props.Where(p => p.Key != "sections" && p.Key != "imports").ToDictionary(p => p.Key, p => (object)p.Value) },
+                { "evidence", e.Evidence.Select(v => new Dictionary<string, object> { { "rule", v.RuleId }, { "category", v.Category.ToString() }, { "weight", v.Weight }, { "definitive", v.Definitive }, { "text", v.Text }, { "detail", v.Detail } }).ToArray() }
+            }).ToArray();
+            File.WriteAllText(dump, Json.Pretty(Json.Serialize(all)), new UTF8Encoding(false));
+            File.WriteAllText(Path.ChangeExtension(dump, ".links.json"), Json.Pretty(Json.Serialize(ScanEngine.LastContext.Links.Select(l => new Dictionary<string, object> { { "from", l.From }, { "to", l.To }, { "rel", l.Relation } }).ToArray())), new UTF8Encoding(false));
+            O.WriteLine("Entity dump: " + dump + " (" + all.Length + " entities)");
         }
 
         public static void Print(ScanResult r)

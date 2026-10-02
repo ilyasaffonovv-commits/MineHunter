@@ -10,6 +10,29 @@ namespace MineHunter.Gui
 {
     public static class GuiApp
     {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+
+        /// <summary>A second start brings the window that is already open to the front instead of opening a second one (no dialog that would wait for a click).</summary>
+        static void ActivateRunningInstance()
+        {
+            try
+            {
+                var me = System.Diagnostics.Process.GetCurrentProcess();
+                foreach (var p in System.Diagnostics.Process.GetProcessesByName(me.ProcessName))
+                {
+                    using (p)
+                    {
+                        if (p.Id == me.Id || p.MainWindowHandle == IntPtr.Zero) continue;
+                        ShowWindow(p.MainWindowHandle, 9);          // SW_RESTORE
+                        SetForegroundWindow(p.MainWindowHandle);
+                        return;
+                    }
+                }
+            }
+            catch { }
+        }
+
         public static int Run(AppConfig cfg, string[] args)
         {
             bool created;
@@ -18,7 +41,7 @@ namespace MineHunter.Gui
                 bool testMode = Array.IndexOf(args, "--shot") >= 0 || Array.IndexOf(args, "--shots") >= 0;
                 if (!created && !testMode)
                 {
-                    MessageBox.Show(Loc.L("MineHunter is already running.", "MineHunter уже запущен."), "MineHunter", MessageBoxButton.OK, MessageBoxImage.Information);
+                    ActivateRunningInstance();
                     return 0;
                 }
                 var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };

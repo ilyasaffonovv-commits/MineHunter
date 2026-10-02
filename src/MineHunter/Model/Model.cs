@@ -63,7 +63,7 @@ namespace MineHunter.Model
 
         public string P(string key) { string v; return Props.TryGetValue(key, out v) ? v : null; }
         public void Set(string key, string value) { if (value != null) Props[key] = value; }
-        public void Add(Evidence e) { if (e != null && !Evidence.Any(x => x.RuleId == e.RuleId && x.Detail == e.Detail)) Evidence.Add(e); }
+        public void Add(Evidence e) { if (e == null) return; lock (Evidence) { if (!Evidence.Any(x => x.RuleId == e.RuleId && x.Detail == e.Detail)) Evidence.Add(e); } }
         public override string ToString() { return Kind + ":" + Title; }
     }
 
@@ -130,5 +130,6 @@ namespace MineHunter.Model
         public long BytesRead;
         public int MemoryScanCandidates; public long MemoryBytesScanned; public int StreamFilesChecked;
         public double Seconds;
+        public System.Collections.Concurrent.ConcurrentDictionary<string, double> StageSeconds = new System.Collections.Concurrent.ConcurrentDictionary<string, double>();
     }
 }
