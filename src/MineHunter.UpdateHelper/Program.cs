@@ -189,10 +189,25 @@ namespace MineHunter.UpdateHelper
         }
 
         /// <summary>MineHunter programs (not this helper) that run from the folder being updated.</summary>
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        static extern int GetLongPathNameW(string shortPath, StringBuilder longPath, int size);
+
+        static string LongPath(string path)
+        {
+            try
+            {
+                var sb = new StringBuilder(1024);
+                int n = GetLongPathNameW(path, sb, sb.Capacity);
+                return n > 0 && n < sb.Capacity ? sb.ToString() : path;
+            }
+            catch { return path; }
+        }
+
         static List<string> StillRunning(string dst)
         {
             var list = new List<string>();
-            string d = Path.GetFullPath(dst).TrimEnd('\\') + "\\";
+            // a process reports its long path; the folder may have been given in the 8.3 form (C:\Users\RUNNER~1\...), and then no running program would ever match
+            string d = LongPath(Path.GetFullPath(dst)).TrimEnd('\\') + "\\";
             int me = Process.GetCurrentProcess().Id;
             foreach (var p in Process.GetProcesses())
             {
@@ -201,7 +216,7 @@ namespace MineHunter.UpdateHelper
                     try
                     {
                         if (p.Id == me || !p.ProcessName.StartsWith("MineHunter", StringComparison.OrdinalIgnoreCase) || p.ProcessName.IndexOf("UpdateHelper", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                        string path = p.MainModule.FileName;
+                        string path = LongPath(p.MainModule.FileName);
                         if (path.StartsWith(d, StringComparison.OrdinalIgnoreCase)) list.Add(p.ProcessName + "#" + p.Id);
                     }
                     catch { }

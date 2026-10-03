@@ -71,9 +71,10 @@ try {
     $open = Start-Process -FilePath (Join-Path $inst 'MineHunter.exe') -ArgumentList '/c ping -n 40 127.0.0.1 > nul' -PassThru -WindowStyle Hidden
     Start-Sleep 2
     if ($open.HasExited) { throw 'the stand-in program for test 5 ended at once: the test cannot say anything' }
+    $seen5 = (Get-Process -Name MineHunter -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Id): $($_.Path)" }) -join '; '
     try { $code5 = Run-Helper ('apply --src "' + (Join-Path $d 'pkg') + '" --dst "' + $inst + '" --backup "' + (Join-Path $d 'bk') + '" --result "' + $res + '" --from 1.0.0 --to 1.1.0 --wait 3') } finally { try { $open.Kill() } catch { } }
     $r5 = Get-Content $res -Raw | ConvertFrom-Json
-    Note 'while a MineHunter program is still open in the folder the helper changes nothing and says why' ($code5 -eq 1 -and $r5.ok -eq $false -and $r5.error -like '*still open*' -and (Read-Text (Join-Path $inst 'components\core.dll')) -eq 'OLD-CORE' -and -not (Test-Path (Join-Path $d 'bk'))) ($r5 | ConvertTo-Json -Compress)
+    Note 'while a MineHunter program is still open in the folder the helper changes nothing and says why' ($code5 -eq 1 -and $r5.ok -eq $false -and $r5.error -like '*still open*' -and (Read-Text (Join-Path $inst 'components\core.dll')) -eq 'OLD-CORE' -and -not (Test-Path (Join-Path $d 'bk'))) (($r5 | ConvertTo-Json -Compress) + "  [dst: $inst; running: $seen5]")
 }
 finally {
     Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root) } | ForEach-Object { try { $_.Kill() } catch { } }
