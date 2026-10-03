@@ -66,9 +66,11 @@ try {
 
     # ---- 5. a MineHunter program is still open in the folder: nothing is changed
     $d = Fresh 't5'; $inst = Join-Path $d 'install'; $res = Join-Path $d 'res\result.json'
-    Copy-Item (Join-Path $env:SystemRoot 'System32\ping.exe') (Join-Path $inst 'MineHunter.exe') -Force
-    $open = Start-Process -FilePath (Join-Path $inst 'MineHunter.exe') -ArgumentList '-n 40 127.0.0.1' -PassThru -WindowStyle Hidden
+    # cmd.exe works as a stand-in anywhere (a copied ping.exe needs its .mui file and ends at once on some Windows Server builds); it stays alive while its ping child runs
+    Copy-Item (Join-Path $env:SystemRoot 'System32\cmd.exe') (Join-Path $inst 'MineHunter.exe') -Force
+    $open = Start-Process -FilePath (Join-Path $inst 'MineHunter.exe') -ArgumentList '/c ping -n 40 127.0.0.1 > nul' -PassThru -WindowStyle Hidden
     Start-Sleep 2
+    if ($open.HasExited) { throw 'the stand-in program for test 5 ended at once: the test cannot say anything' }
     try { $code5 = Run-Helper ('apply --src "' + (Join-Path $d 'pkg') + '" --dst "' + $inst + '" --backup "' + (Join-Path $d 'bk') + '" --result "' + $res + '" --from 1.0.0 --to 1.1.0 --wait 3') } finally { try { $open.Kill() } catch { } }
     $r5 = Get-Content $res -Raw | ConvertFrom-Json
     Note 'while a MineHunter program is still open in the folder the helper changes nothing and says why' ($code5 -eq 1 -and $r5.ok -eq $false -and $r5.error -like '*still open*' -and (Read-Text (Join-Path $inst 'components\core.dll')) -eq 'OLD-CORE' -and -not (Test-Path (Join-Path $d 'bk'))) ($r5 | ConvertTo-Json -Compress)
