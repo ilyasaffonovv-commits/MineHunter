@@ -125,7 +125,9 @@ namespace MineHunter.Guards
             foreach (var g in list.Where(x => x.Weight > 0).GroupBy(x => x.Category))
             {
                 var ws = g.Select(x => (double)x.Weight).OrderByDescending(x => x).ToList();
-                double t = Math.Min(45, ws[0] + 0.5 * ws.Skip(1).Sum());
+                // a category without a decisive signal is capped (weak signs add up only so far); one with a decisive signal is not: a pool address in the command line and the
+                // XMRig donate option next to it are two independent confirmations of the same thing
+                double t = Math.Min(g.Any(x => x.Definitive) ? 100 : 45, ws[0] + 0.5 * ws.Skip(1).Sum());
                 double decisive = g.Where(x => x.Definitive).Select(x => (double)x.Weight).DefaultIfEmpty(0).Max();     // a decisive signal (known bad hash, a pool in the command line) is not capped
                 if (decisive > t) t = Math.Min(100, decisive);
                 total += t; if (t >= 12) cats++;
