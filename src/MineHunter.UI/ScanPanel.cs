@@ -214,7 +214,7 @@ namespace MineHunter.Gui
             {
                 // a clean result stays clean on screen: the minor notes are one click away
                 var holder = new ContentControl();
-                var more = Ui.Btn(L("Show the " + res.Observations.Count + " minor notes (not threats)", "Показать " + res.Observations.Count + " мелких заметок (не угроз)"), null, "BtnGhost"); more.Margin = new Thickness(0, 14, 0, 0); more.HorizontalAlignment = HorizontalAlignment.Left;
+                var more = Ui.Btn(L("Show the " + res.Observations.Count + " minor notes (not threats)", "Показать " + res.Observations.Count + " мелких заметок (не угроз)"), null, "BtnGhost"); more.Margin = new Thickness(0, 14, 0, 0); more.HorizontalAlignment = HorizontalAlignment.Left; more.VerticalAlignment = VerticalAlignment.Top;
                 more.Click += (s, e) => { holder.Content = makeResults(true); };
                 holder.Content = more; Grid.SetRow(holder, row); body.Children.Add(holder);
             }

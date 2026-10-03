@@ -29,9 +29,9 @@ namespace MineHunter.Scanning
 
         static readonly Spot[] Spots =
         {
-            S("MU", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows", Mode.Values, new[] { "Load", "Run" }, "Windows Load/Run value", "REG.WINDOWS_LOAD_RUN", 20,
+            S("MU", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows", Mode.Values, new[] { "Load", "Run" }, "Windows Load/Run value", "REG.WINDOWS_LOAD_RUN", 26,
               "The Load/Run value of the Windows key starts a program at every logon (an old trick that ordinary software hardly uses)"),
-            S("M", @"SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Windows", Mode.Values, new[] { "Load", "Run" }, "Windows Load/Run value (32-bit)", "REG.WINDOWS_LOAD_RUN", 20,
+            S("M", @"SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Windows", Mode.Values, new[] { "Load", "Run" }, "Windows Load/Run value (32-bit)", "REG.WINDOWS_LOAD_RUN", 26,
               "The Load/Run value of the Windows key starts a program at every logon (an old trick that ordinary software hardly uses)"),
             S("MU", @"SOFTWARE\Microsoft\Command Processor", Mode.Values, new[] { "AutoRun" }, "cmd.exe AutoRun", "REG.CMD_AUTORUN", 25,
               "This command runs every time any Command Prompt window or batch file starts (cmd.exe AutoRun)"),

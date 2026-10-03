@@ -56,15 +56,15 @@ $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 # --------------------------------------------------------------------------- registry autostart points
 Vec 'R01' 'HKCU Run value -> unique harness in LocalAppData' {
     $exe = Copy-Unique "$script:LA\r01\app.exe"; Set-RegStr $run 'MinerLabAdvRun01' ('"' + $exe + '" ' + $script:IDLE)
-} { Has-RegVal $run 'MinerLabAdvRun01' } 'MinerLabAdvRun01|\\MinerLabAdv\\r01\\' 'finding' $true { Get-RegStr $run 'MinerLabAdvRun01' } $true
+} { Has-RegVal $run 'MinerLabAdvRun01' } 'MinerLabAdvRun01|\\MinerLabAdv\\r01\\' 'weak' $true { Get-RegStr $run 'MinerLabAdvRun01' }
 
 Vec 'R02' 'HKCU RunOnce value' {
     $exe = Copy-Unique "$script:LA\r02\app.exe"; Set-RegStr 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun02' ('"' + $exe + '" ' + $script:IDLE)
-} { Has-RegVal 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun02' } 'MinerLabAdvRun02|\\MinerLabAdv\\r02\\' 'finding' $true { Get-RegStr 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun02' }
+} { Has-RegVal 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun02' } 'MinerLabAdvRun02|\\MinerLabAdv\\r02\\' 'weak' $true { Get-RegStr 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun02' }
 
 Vec 'R03' 'HKLM Policies\Explorer\Run value' {
     $exe = Copy-Unique "$script:LA\r03\app.exe"; Set-RegStr 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun03' ('"' + $exe + '" ' + $script:IDLE)
-} { Has-RegVal 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun03' } 'MinerLabAdvRun03|\\MinerLabAdv\\r03\\' 'finding' $true { Get-RegStr 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun03' }
+} { Has-RegVal 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun03' } 'MinerLabAdvRun03|\\MinerLabAdv\\r03\\' 'weak' $true { Get-RegStr 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun03' }
 
 Vec 'R04' 'Windows Load value (old autostart trick)' {
     $exe = Copy-Unique "$script:LA\r04\app.exe"; Set-RegStr 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows' 'Load' ('"' + $exe + '" ' + $script:IDLE)
@@ -74,9 +74,9 @@ Vec 'R05' 'cmd.exe AutoRun (runs whenever any Command Prompt starts; idles 1 s)'
     $exe = Copy-Unique "$script:LA\r05\app.exe"; Set-RegStr 'HKCU:\Software\Microsoft\Command Processor' 'AutoRun' ('"' + $exe + '" --mode idle --seconds 1 --label MinerLabAdv')
 } { Has-RegVal 'HKCU:\Software\Microsoft\Command Processor' 'AutoRun' } 'AutoRun|\\MinerLabAdv\\r05\\' 'finding' $true { Get-RegStr 'HKCU:\Software\Microsoft\Command Processor' 'AutoRun' }
 
-Vec 'R06' 'per-user handler of a made-up file type (.mlabadv)' {
+Vec 'R06' 'per-user handler of a made-up file type (.mlabadv): an ordinary program opens it, which many installed programs do' {
     $exe = Copy-Unique "$script:LA\r06\app.exe"; Set-RegStr 'HKCU:\Software\Classes\.mlabadv\shell\open\command' '(default)' ('"' + $exe + '" ' + $script:IDLE)
-} { Has-RegVal 'HKCU:\Software\Classes\.mlabadv\shell\open\command' '(default)' } 'mlabadv|\\MinerLabAdv\\r06\\' 'finding' $true { Get-RegStr 'HKCU:\Software\Classes\.mlabadv\shell\open\command' '(default)' }
+} { Has-RegVal 'HKCU:\Software\Classes\.mlabadv\shell\open\command' '(default)' } 'mlabadv|\\MinerLabAdv\\r06\\' 'weak' $true { Get-RegStr 'HKCU:\Software\Classes\.mlabadv\shell\open\command' '(default)' }
 
 Vec 'R07' 'per-user ms-settings override (UAC bypass pattern)' {
     if (Test-Path 'HKCU:\Software\Classes\ms-settings') { throw 'HKCU ms-settings already exists on this PC: not touched' }
@@ -100,11 +100,11 @@ Vec 'R11' 'Active Setup StubPath' {
     $exe = Copy-Unique "$script:LA\r11\app.exe"
     $k = 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}'
     Set-RegStr $k 'StubPath' ('"' + $exe + '" ' + $script:IDLE); Set-RegStr $k 'Version' '1,0,0,1'
-} { Has-RegVal 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}' 'StubPath' } 'AD11|\\MinerLabAdv\\r11\\' 'finding' $true { Get-RegStr 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}' 'StubPath' }
+} { Has-RegVal 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}' 'StubPath' } 'AD11|\\MinerLabAdv\\r11\\' 'weak' $true { Get-RegStr 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}' 'StubPath' }
 
 Vec 'R12' 'per-user COM class whose server is a program in a user folder' {
     $dll = Copy-Unique "$script:LA\r12\server.dll"; Set-RegStr "$clsRoot\{7A1B0C2D-0000-4000-8000-00000000AD12}\InprocServer32" '(default)' $dll
-} { Has-RegVal "$clsRoot\{7A1B0C2D-0000-4000-8000-00000000AD12}\InprocServer32" '(default)' } 'AD12|\\MinerLabAdv\\r12\\' 'finding' $true { Get-RegStr "$clsRoot\{7A1B0C2D-0000-4000-8000-00000000AD12}\InprocServer32" '(default)' }
+} { Has-RegVal "$clsRoot\{7A1B0C2D-0000-4000-8000-00000000AD12}\InprocServer32" '(default)' } 'AD12|\\MinerLabAdv\\r12\\' 'weak' $true { Get-RegStr "$clsRoot\{7A1B0C2D-0000-4000-8000-00000000AD12}\InprocServer32" '(default)' }
 
 Vec 'R13' 'per-user COM scriptlet class' {
     New-Item -ItemType Directory -Force "$script:LA\r13" | Out-Null
@@ -150,7 +150,7 @@ Vec 'S04' 'service recovery command that starts a program in a user folder' {
     $exe = Copy-Unique "$script:LA\s04\app.exe"
     Invoke-Sc @('create', 'MinerLabAdvFail04', 'binPath=', "$env:SystemRoot\System32\notepad.exe", 'start=', 'demand')
     Invoke-Sc @('failure', 'MinerLabAdvFail04', 'reset=', '3600', 'command=', ((Q $exe) + ' --mode idle --seconds 3'), 'actions=', 'run/60000')
-} { Has-Svc 'MinerLabAdvFail04' } 'MinerLabAdvFail04|\\MinerLabAdv\\s04\\' 'finding' $true { Get-RegStr 'HKLM:\SYSTEM\CurrentControlSet\Services\MinerLabAdvFail04' 'FailureCommand' }
+} { Has-RegVal 'HKLM:\SYSTEM\CurrentControlSet\Services\MinerLabAdvFail04' 'FailureCommand' } 'MinerLabAdvFail04|\\MinerLabAdv\\s04\\' 'finding' $true { Get-RegStr 'HKLM:\SYSTEM\CurrentControlSet\Services\MinerLabAdvFail04' 'FailureCommand' }
 
 Vec 'S05' 'kernel-driver service entry whose file is in a user folder (never loaded)' {
     $sys = Copy-Unique "$script:LA\s05\drv.sys"
@@ -161,7 +161,7 @@ Vec 'S05' 'kernel-driver service entry whose file is in a user folder (never loa
 Vec 'T01' 'task whose command uses an environment variable path' {
     $exe = Copy-Unique "$script:LA\t01\app.exe"
     & schtasks.exe /create /tn 'MinerLabAdvTask01' /tr ('\"%LOCALAPPDATA%\MinerLabAdv\t01\app.exe\" --mode idle --seconds 5') /sc onlogon /f | Out-Null
-} { Has-Task 'MinerLabAdvTask01' } 'MinerLabAdvTask01|\\MinerLabAdv\\t01\\' 'finding' $true { (& schtasks.exe /query /tn 'MinerLabAdvTask01' /xml | Out-String).Length } $true
+} { Has-Task 'MinerLabAdvTask01' } 'MinerLabAdvTask01|\\MinerLabAdv\\t01\\' 'weak' $true { (& schtasks.exe /query /tn 'MinerLabAdvTask01' /xml | Out-String).Length }
 
 Vec 'T02' 'task that starts when the PC is idle' {
     $exe = Copy-Unique "$script:LA\t02\app.exe"
@@ -170,7 +170,7 @@ Vec 'T02' 'task that starts when the PC is idle' {
     [IO.File]::WriteAllText($xf, $xml, [Text.Encoding]::Unicode)
     & schtasks.exe /create /tn 'MinerLabAdvTask02' /xml $xf /f | Out-Null
     Remove-Item -LiteralPath $xf -Force -ErrorAction SilentlyContinue
-} { Has-Task 'MinerLabAdvTask02' } 'MinerLabAdvTask02|\\MinerLabAdv\\t02\\' 'finding' $true { (& schtasks.exe /query /tn 'MinerLabAdvTask02' /xml | Out-String).Length }
+} { Has-Task 'MinerLabAdvTask02' } 'MinerLabAdvTask02|\\MinerLabAdv\\t02\\' 'finding' $true { (& schtasks.exe /query /tn 'MinerLabAdvTask02' /xml | Out-String).Length } $true
 
 # --------------------------------------------------------------------------- WMI in a namespace nobody looks at
 Vec 'W01' 'WMI permanent subscription kept in root\default, started through ExecutablePath' {
@@ -198,7 +198,7 @@ Vec 'F02' 'archive in Downloads that holds a program named like a known miner' {
     $n = 'xm' + 'rig'
     foreach ($e in @("$n-6.21.0/$n.exe", 'readme.txt')) { $en = $za.CreateEntry($e); $sw = New-Object IO.StreamWriter($en.Open()); $sw.Write('MinerLabAdv benign placeholder'); $sw.Dispose() }
     $za.Dispose()
-} { Test-Path -LiteralPath "$script:DL\MinerLabAdvTools.zip" } 'MinerLabAdvTools' 'finding' $true { Sha "$script:DL\MinerLabAdvTools.zip" }
+} { Test-Path -LiteralPath "$script:DL\MinerLabAdvTools.zip" } 'MinerLabAdvTools' 'weak' $true { Sha "$script:DL\MinerLabAdvTools.zip" }
 
 Vec 'F03' 'program whose name hides its real extension with a right-to-left override' {
     Copy-Unique ("$script:AP\f03\invoice" + [char]0x202E + 'txt.exe') | Out-Null
@@ -224,15 +224,18 @@ Vec 'F06' 'miner configuration file (pool, wallet, algorithm) with no program be
 Vec 'F07' 'hidden and system-flagged program in the shared Public folder' {
     $f = Copy-Unique "$script:PUB\f07\update.exe"
     (Get-Item -LiteralPath $f -Force).Attributes = 'Hidden, System'
-} { Test-Path -LiteralPath "$script:PUB\f07\update.exe" } 'MinerLabAdv\\f07' 'finding' $true { Sha "$script:PUB\f07\update.exe" }
+} { Test-Path -LiteralPath "$script:PUB\f07\update.exe" } 'MinerLabAdv\\f07' 'weak' $true { Sha "$script:PUB\f07\update.exe" }
 
 Vec 'F08' 'CONTROL: Microsoft-signed notepad.exe copied into a user folder' {
     New-Item -ItemType Directory -Force "$script:LA\f08" | Out-Null
     Copy-Item "$env:SystemRoot\System32\notepad.exe" "$script:LA\f08\notepad.exe" -Force
 } { Test-Path -LiteralPath "$script:LA\f08\notepad.exe" } 'MinerLabAdv\\f08' 'none' $true { Sha "$script:LA\f08\notepad.exe" }
 
-Vec 'F09' 'GAME CHEAT (not a miner): a tool called like a known cheat, started by Run' {
+Vec 'F09' 'GAME CHEAT (not a miner): a tool called like a known cheat, started by three autostart entries' {
     $exe = Copy-Unique "$script:LA\f09\CheatEngine\cheatengine-x86_64.exe"; Set-RegStr $run 'MinerLabAdvRun09' ('"' + $exe + '" ' + $script:IDLE)
+    # the way a cracked "trainer" installs itself: three autostart entries for the same program (one entry alone is too common to be a finding)
+    Set-RegStr 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun09b' ('"' + $exe + '" ' + $script:IDLE)
+    Set-RegStr 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun09c' ('"' + $exe + '" ' + $script:IDLE)
 } { Has-RegVal $run 'MinerLabAdvRun09' } 'MinerLabAdvRun09|\\MinerLabAdv\\f09\\' 'kept' $true { Sha "$script:LA\f09\CheatEngine\cheatengine-x86_64.exe" }
 
 Vec 'F10' 'CHEAT THAT CARRIES A MINER: the same kind of tool with a miner configuration beside it' {

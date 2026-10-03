@@ -28,7 +28,7 @@ body:
     id: version
     attributes:
       label: MineHunter version and rules version
-      placeholder: "1.0.0 / rules 2026.09.26.1"
+      placeholder: "1.1.0 / rules 2026.10.04.1"
     validations:
       required: true
   - type: textarea

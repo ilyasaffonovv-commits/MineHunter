@@ -260,6 +260,7 @@ namespace MineHunter
                     var cs = TestCtx(rules);
                     ExtraPersistenceScanner.ServiceFailureCommands(cs, fakeM);
                     Check("service recovery command that runs an unsigned program is found, a signed Windows one is not", Find(cs, e => e.Id == "svcfail:FakeSvc" && HasRule(e, "SVC.FAILURE_COMMAND")) != null && Find(cs, e => e.Id == "svcfail:VendorSvc") == null);
+                    Check("... and a recovery command that starts a program from a user folder is Suspicious on its own (a vendor's own command stays a note)", RiskEngine.Compute(new[] { Find(cs, e => e.Id == "svcfail:FakeSvc") }).Total >= RiskEngine.SuspiciousAt);
                 }
 
                 // ---- scheduled-task triggers that wait for nobody to be watching
@@ -271,6 +272,7 @@ namespace MineHunter
                 };
                 var ci1 = taskCtx("TIdle", "<IdleTrigger/>");
                 Check("scheduled task that starts when the PC is idle is flagged", Find(ci1, e => HasRule(e, "TASK.IDLE_TRIGGER")) != null, DumpEntities(ci1));
+                Check("... and an idle-only task that runs an unsigned program from a user folder is Suspicious on its own", RiskEngine.Compute(new[] { Find(ci1, e => HasRule(e, "TASK.IDLE_TRIGGER")) }).Total >= RiskEngine.SuspiciousAt);
                 Check("scheduled task that starts when the screen is locked is flagged", Find(taskCtx("TLock", "<SessionStateChangeTrigger><StateChange>SessionLock</StateChange></SessionStateChangeTrigger>"), e => HasRule(e, "TASK.LOCK_TRIGGER")) != null);
                 var tplain = taskCtx("TLogon", "<LogonTrigger/>");
                 Check("a plain logon task gets neither", Find(tplain, e => HasRule(e, "TASK.IDLE_TRIGGER") || HasRule(e, "TASK.LOCK_TRIGGER")) == null);
@@ -422,6 +424,7 @@ namespace MineHunter
                     sk.CreateSubKey("Parameters").SetValue("Application", payload);
                     var csv = TestCtx(rules); ServiceScanner.One(csv, fs, "FakeNssm", new Dictionary<string, string>());
                     Check("a service that wraps a program from a user folder (NSSM style) is flagged", Find(csv, e => e.Id == "svc:FakeNssm" && HasRule(e, "SVC.WRAPPED_USER_PATH")) != null);
+                    Check("... and it is Suspicious on its own: a system service has no business running from a folder every user can change", RiskEngine.Compute(new[] { Find(csv, e => e.Id == "svc:FakeNssm") }).Total >= RiskEngine.SuspiciousAt);
                 }
 
                 // ---- cleaning: one list entry only, identical files, a file that changed, folder links
@@ -438,6 +441,52 @@ namespace MineHunter
                     Check("cleaning a list value removes only the foreign entry and keeps the Windows one", o2.Results.All(r => r.Success) && left != null && left.Length == 1 && left[0] == "autocheck autochk *");
                     var qi2 = Quarantine.List().FirstOrDefault(i => i.Type == "RegistryValue");
                     Check("... and the whole list can be put back from the quarantine record", qi2 != null && RemediationEngine.Restore(qi2) == null && ((tk.GetValue("List") as string[]) ?? new string[0]).Length == 2);
+                }
+                // ---- a per-user override of a file type (the ms-settings UAC bypass and its relatives) is removed as a whole key and comes back complete
+                {
+                    string hcls = "MhSelfTestHandler" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                    string hk = @"Software\Classes\" + hcls + @"\shell\open\command";
+                    try
+                    {
+                        using (var hk1 = Registry.CurrentUser.CreateSubKey(hk)) { hk1.SetValue("", "\"" + payload + "\" %1"); hk1.SetValue("DelegateExecute", ""); }
+                        var he = new Entity { Id = "reg2:HKCU\\" + hk, Kind = EntityKind.Registry, Title = "Per-user handler: " + hcls, Location = "HKCU\\" + hk };
+                        he.Set("hive", "HKCU"); he.Set("key", hk); he.Set("value", ""); he.Set("data", payload);
+                        var hf = new Finding { Id = "T3", Title = "t", Verdict = Verdict.HighRisk, Entities = new List<Entity> { he } };
+                        var hs = new List<RemediationStep> { new RemediationStep { Type = ActionType.RemoveRegistryValue, EntityId = he.Id, Target = "x", Order = 1, Description = "d" } };
+                        var ho = RemediationEngine.Execute(TestCtx(rules), hf, hs, null);
+                        bool classGone; using (var gone = Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + hcls)) classGone = gone == null;
+                        Check("a per-user handler override is removed as a whole: no DelegateExecute and no empty keys are left to shadow the Windows handler", ho.Results.All(r => r.Success) && classGone);
+                        var qh = Quarantine.List().FirstOrDefault(i => i.Type == "RegistryValue" && (i.OriginalPath ?? "").Contains(hcls));
+                        bool back = false;
+                        if (qh != null && RemediationEngine.Restore(qh) == null)
+                            using (var bk = Registry.CurrentUser.OpenSubKey(hk)) back = bk != null && Convert.ToString(bk.GetValue("")).Contains(payload) && Array.IndexOf(bk.GetValueNames(), "DelegateExecute") >= 0;
+                        Check("... and the quarantine record brings it back complete, DelegateExecute included", back);
+                    }
+                    finally { try { Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\" + hcls, false); } catch { } }
+                }
+                // ---- "--only": what does not mention the text is never in scope, in the first round or in the repeat rounds (a test once cleaned real programs because the repeat rounds looked at everything)
+                {
+                    var ours = new Entity { Id = "reg2:HKCU\\ms", Kind = EntityKind.Registry, Title = "Per-user handler: ms-settings (open)", Location = @"HKCU\Software\Classes\ms-settings\shell\open\command" };
+                    ours.Set("data", "\"" + @"C:\Users\x\AppData\Local\MinerLabAdv\r07\app.exe" + "\" --mode idle");
+                    var real = new Entity { Id = "reg2:HKCU\\fl", Kind = EntityKind.Registry, Title = "Per-user handler: FL64.flp.26 (open)", Location = @"HKCU\Software\Classes\FL64.flp.26\shell\open\command" };
+                    real.Set("data", "\"" + @"C:\Program Files\Image-Line\FL Studio 2026\FL64.exe" + "\" \"%1\"");
+                    var fOurs = new Finding { Id = "A", Entities = new List<Entity> { ours } }; var fReal = new Finding { Id = "B", Entities = new List<Entity> { real } };
+                    Check("--only: a finding whose registry data mentions the text is in scope, one that does not is not, and without --only everything is", Cli.InScope(fOurs, "MinerLabAdv") && !Cli.InScope(fReal, "MinerLabAdv") && Cli.InScope(fOurs, null) && Cli.InScope(fReal, null));
+                }
+                // ---- the program file behind a miner process goes with it: stopping the process alone would leave the file for the next logon or a watchdog
+                {
+                    string idir = Path.Combine(tmp, "ImgBox"); Directory.CreateDirectory(idir);
+                    string iexe = Path.Combine(idir, "miner.exe"); File.Copy(System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName, iexe, true);
+                    var cI = TestCtx(rules);
+                    var imgE = cI.Files.Inspect(iexe, FileRole.ProcessImage);
+                    var prE = new Entity { Id = "proc:9001", Kind = EntityKind.Process, Title = "miner.exe", Location = iexe };
+                    prE.Set("pid", "9001"); prE.Set("start", "t");
+                    prE.Add(new Evidence("PROC.CMD.MINER.STRATUM_URL", EvidenceCategory.Content, 40, "pool address on the command line", "x", true));
+                    prE.Add(new Evidence("PROC.CMD.MINER.POOL_USER", EvidenceCategory.Content, 35, "pool user on the command line", "x"));
+                    cI.Entities[prE.Id] = prE; cI.Link(prE.Id, imgE.Id, "runs image");
+                    List<Entity> obsI; var flI = RiskEngine.Build(cI, out obsI);
+                    var fI = flI.FirstOrDefault(x => x.Entities.Contains(prE));
+                    Check("a miner process and the program file behind it are one finding: the plan stops the process and quarantines the file", fI != null && fI.Verdict >= Verdict.HighRisk && fI.Entities.Contains(imgE) && fI.Steps.Any(s => s.Type == ActionType.KillProcess) && fI.Steps.Any(s => s.Type == ActionType.QuarantineFile && s.RecommendedByDefault), fI == null ? "no finding" : string.Join(",", fI.Steps.Select(s => s.Type.ToString())));
                 }
                 byte[] same = Encoding.ASCII.GetBytes("identical content for two files");
                 string f1 = Path.Combine(tmp, "one.bin"), f2 = Path.Combine(tmp, "two.bin"); File.WriteAllBytes(f1, same); File.WriteAllBytes(f2, same);
@@ -587,6 +636,28 @@ namespace MineHunter
                 Check("... none of its steps is selected by default, and the recommendation says it is kept", gf != null && gf.Steps.All(s => !s.RecommendedByDefault) && gf.Recommendation.StartsWith("Kept:") && ReportWriter.StateTag(gf, null) != null);
                 var gm = graded(true);
                 Check("a cheat that also carries miner strings is a miner: the cheat class no longer protects it", gm != null && gm.ToolClass == null && gm.Verdict >= Verdict.HighRisk && gm.Steps.Any(s => s.RecommendedByDefault));
+                // ---- a miner configuration next to a program: the program, what starts it and the configuration are one finding (a packed miner has nothing else to recognise it by)
+                {
+                    string minerCfgText = "{\"autosave\":true,\"pools\":[{\"url\":\"127.0.0.1:3333\",\"user\":\"WalletNotReal0000000000\",\"pass\":\"x\"}],\"algo\":\"" + Obf.J("rx", "/0") + "\",\"" + Obf.J("donate", "-level") + "\":1}";
+                    Func<string, int, ScanContext> minerBox = (name, extraExes) =>
+                    {
+                        string mdir = Path.Combine(tmp, name); Directory.CreateDirectory(mdir);
+                        string mexe = Path.Combine(mdir, "svc.exe"); File.Copy(selfExe, mexe, true);
+                        for (int i = 0; i < extraExes; i++) File.Copy(selfExe, Path.Combine(mdir, "other" + i + ".exe"), true);
+                        File.WriteAllText(Path.Combine(mdir, "config.json"), minerCfgText);
+                        var c = TestCtx(rules);
+                        c.Files.Inspect(Path.Combine(mdir, "config.json"), FileRole.HotDir);
+                        foreach (var f in Directory.GetFiles(mdir, "*.exe")) c.Files.Inspect(f, FileRole.HotDir);
+                        return c;
+                    };
+                    var cb = minerBox("MinerBox", 0);
+                    List<Entity> obsB; var flB = RiskEngine.Build(cb, out obsB);
+                    var exeB = Find(cb, e => e.Kind == EntityKind.File && e.Title == "svc.exe");
+                    Check("a miner configuration with a program beside it: the program is marked and the two are one finding", exeB != null && HasRule(exeB, "MINER.PROGRAM_NEXT_TO_CONFIG") && flB.Any(x => x.Entities.Contains(exeB) && x.Entities.Any(y => HasRule(y, "MINER.CONFIG_FILE"))), exeB == null ? "no program entity" : DumpEntities(cb));
+                    var cb2 = minerBox("MinerBoxCrowded", 6);
+                    List<Entity> obsB2; RiskEngine.Build(cb2, out obsB2);
+                    Check("... in a folder full of programs nothing is guessed: no program gets the mark", Find(cb2, e => e.Kind == EntityKind.File && HasRule(e, "MINER.PROGRAM_NEXT_TO_CONFIG")) == null);
+                }
                 var pkt = new RulePack(); pkt.Merge("{\"version\":\"2026.01.01.1\"}", "base");
                 pkt.Merge("{\"version\":\"2099.01.01.1\",\"toolClasses\":[{\"id\":\"TOOL.EVIL\",\"class\":\"GameCheat\",\"regex\":\"miner\",\"text\":\"t\"}]}", "next-to-exe", true); pkt.Build();
                 Check("a rule pack next to the EXE cannot add a tool class (a miner could name itself into the list)", pkt.ToolClasses.Count == 0);
@@ -699,6 +770,7 @@ namespace MineHunter
             }
             catch (Exception ex) { Check("self scan for miner markers", false, ex.Message); }
             Check("publisher trust: real vendor names pass", rules.IsTrustedPublisher("Intel Corporation") && rules.IsTrustedPublisher("NVIDIA Corporation") && rules.IsTrustedPublisher("ASUSTeK COMPUTER INC.") && rules.IsTrustedPublisher("Valve Corp.") && rules.IsTrustedPublisher("Advanced Micro Devices, Inc."));
+            Check("publisher trust: the security vendors that own Avast, AVG, Norton and Avira are trusted (their boot-time tools sit in BootExecute for a while), a look-alike is not", rules.IsTrustedPublisher("Gen Digital Inc.") && rules.IsTrustedPublisher("NortonLifeLock Inc.") && rules.IsTrustedPublisher("AVG Technologies USA, LLC") && !rules.IsTrustedPublisher("Gen Digitalis Miner Ltd") && !rules.IsTrustedPublisher("Avirasoft Free Tools"));
             Check("publisher trust: look-alike names are NOT trusted", !rules.IsTrustedPublisher("Intelligent Systems Ltd") && !rules.IsTrustedPublisher("Pineapple Corp") && !rules.IsTrustedPublisher("Valverde Media LLC") && !rules.IsTrustedPublisher("Free Intel Miner LLC") && !rules.IsTrustedPublisher(""));
             var sc = new StringScanner(new[] { Obf.J("stra", "tum+tcp://"), Obf.J("xm", "rig"), Obf.J("random", "x") });
             var bytesA = Encoding.ASCII.GetBytes("junk " + Obf.J("STRA", "TUM+TCP") + "://pool:3333 more " + Obf.J("XM", "Rig"));

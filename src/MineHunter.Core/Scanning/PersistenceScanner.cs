@@ -507,7 +507,7 @@ namespace MineHunter.Scanning
                     var e = Persist.Evaluate(ctx, "startup:" + PathUtil.Key(f), EntityKind.StartupItem, name, f, command, "Startup-folder item", ev =>
                     {
                         bool hidden = Fs.IsHidden(f);
-                        if (hidden) ev.Add(new Evidence("STARTUP.HIDDEN", EvidenceCategory.Persistence, 12, "Hidden file in a Startup folder", f));
+                        if (hidden) ev.Add(new Evidence("STARTUP.HIDDEN", EvidenceCategory.Persistence, 26, "Hidden file in a Startup folder", f));
                         if (name.IndexOf('\u200b') >= 0 || name.Trim().Length == 0 || name.StartsWith(" ") || Regex.IsMatch(Path.GetFileNameWithoutExtension(name), @"^[\u200b\u00a0\s]+$"))
                             ev.Add(new Evidence("STARTUP.INVISIBLE_NAME", EvidenceCategory.Masquerade, 25, "Startup item with an invisible/blank name", f));
                         if (Regex.IsMatch(command, @"cmd(\.exe)?""?\s+/c\s", RegexOptions.IgnoreCase) && f.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
@@ -623,14 +623,14 @@ namespace MineHunter.Scanning
                     var target = exe != null && File.Exists(exe) ? ctx.Files.Inspect(exe, FileRole.PersistenceTarget) : null;
                     bool untrusted = target != null && !target.Trusted;
 
-                    if (untrusted && uw) ev.Add(new Evidence("SVC.IMAGE_USER_PATH", EvidenceCategory.Persistence, isDriver ? 28 : 22, (isDriver ? "Driver" : "Service") + " image is stored in a user-writable folder", exe));
+                    if (untrusted && uw) ev.Add(new Evidence("SVC.IMAGE_USER_PATH", EvidenceCategory.Persistence, isDriver ? 28 : 26, (isDriver ? "Driver" : "Service") + " image is stored in a user-writable folder", exe));
                     if (wrapped != null)
                     {
                         string wexe = PathUtil.ExtractExecutable(wrapped);
                         var wt = wexe != null && File.Exists(wexe) ? ctx.Files.Inspect(wexe, FileRole.PersistenceTarget) : null;
                         if (wt != null && !wt.Trusted && PathUtil.IsUserWritable(wexe))
                         {
-                            ev.Add(new Evidence("SVC.WRAPPED_USER_PATH", EvidenceCategory.Persistence, 22, "The service is only a wrapper (NSSM or similar); the program it keeps running is unsigned and lies in a user-writable folder", wexe));
+                            ev.Add(new Evidence("SVC.WRAPPED_USER_PATH", EvidenceCategory.Persistence, 26, "The service is only a wrapper (NSSM or similar); the program it keeps running is unsigned and lies in a user-writable folder", wexe));
                             ctx.Link("svc:" + name, wt.Id, "wraps");
                         }
                     }
@@ -775,7 +775,7 @@ namespace MineHunter.Scanning
                     if (string.Equals(runLevel, "HighestAvailable", StringComparison.OrdinalIgnoreCase)) ev.Add(new Evidence("TASK.HIGHEST", EvidenceCategory.Persistence, 8, "Runs with the highest privileges from a user-writable folder", taskPath));
                     if (repeat.Any(r => r > TimeSpan.Zero && r <= TimeSpan.FromMinutes(10))) ev.Add(new Evidence("TASK.REPEAT_SHORT", EvidenceCategory.Persistence, 8, "Re-runs every few minutes (respawn / watchdog pattern)", string.Join(",", repeat.Select(r => r.TotalMinutes + "min"))));
                     if (trigTypes.Contains("IdleTrigger") || idleOnly)
-                        ev.Add(new Evidence("TASK.IDLE_TRIGGER", EvidenceCategory.Persistence, 10, "Starts only when the computer is idle - the moment a miner can use all of it without the owner noticing", taskPath));
+                        ev.Add(new Evidence("TASK.IDLE_TRIGGER", EvidenceCategory.Persistence, 26, "Starts only when the computer is idle - the moment a miner can use all of it without the owner noticing", taskPath));
                     if (sessionStates.Any(s => s.IndexOf("Lock", StringComparison.OrdinalIgnoreCase) >= 0 || s.IndexOf("Disconnect", StringComparison.OrdinalIgnoreCase) >= 0))
                         ev.Add(new Evidence("TASK.LOCK_TRIGGER", EvidenceCategory.Persistence, 8, "Starts when the screen is locked or the session is disconnected (nobody is watching)", string.Join(",", sessionStates)));
                     if (trigTypes.Distinct().Count() >= 2) ev.Add(new Evidence("TASK.MULTI_TRIGGER", EvidenceCategory.Persistence, 3, "Several different triggers (boot + logon + timer)", string.Join(",", trigTypes)));
@@ -1033,7 +1033,7 @@ namespace MineHunter.Scanning
                             ev.Add(new Evidence("WMI.EVENTLOG_CONSUMER", EvidenceCategory.Persistence, 2, "Additional WMI event-log consumer", cname));
                         else
                             ev.Add(new Evidence("WMI.OTHER_CONSUMER", EvidenceCategory.Persistence, 14, "A WMI consumer of a non-standard class (" + cls + ") is registered: a provider that is not part of Windows is doing something on WMI events", cname));
-                        if (!main) ev.Add(new Evidence("WMI.HIDDEN_NAMESPACE", EvidenceCategory.Persistence, 12, "The subscription is kept in " + ns + " instead of root\\subscription, where tools look for it", ns));
+                        if (!main) ev.Add(new Evidence("WMI.HIDDEN_NAMESPACE", EvidenceCategory.Persistence, 24, "The subscription is kept in " + ns + " instead of root\\subscription, where tools look for it", ns));
                         if (!bound) ev.Add(new Evidence("WMI.UNBOUND", EvidenceCategory.Persistence, 2, "Consumer exists without a binding (left-over)", cname));
                     });
                     if (e != null) { e.Set("wmiClass", cls); e.Set("consumer", cname); e.Set("filter", filterName); e.Set("query", query); e.Set("command", cmd); e.Set("script", Text.Trunc(script, 2000)); e.Set("wmiNamespace", ns); }

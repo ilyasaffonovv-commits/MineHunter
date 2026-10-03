@@ -3,9 +3,9 @@
     "releaseUrl":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
     "notes":  "MineHunter 1.0.1: reports moved next to the EXE, scheduled-task COM-handler detection, 5 new rules.",
     "rules":  {
-                  "version":  "2026.10.01.1",
+                  "version":  "2026.10.04.1",
                   "url":  "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",
-                  "sha256":  "25d74e4d6f166c61e07ace3c50db69124b64375e6dcfc119e05aa6bd4dd371f6",
-                  "signature":  "rAX0zBmHqVy2Zb2Ra0rJdK7NgZOiElpONA0QwXDrPUb+Eg0LWaEcQbCrRtXcG/xKI3WgsP9xYrAaPjYBS4ljFlyvUZddhM4dhtMe5QrK1WthSptqHR9F5UZseQQ9DNi/lT0TIIyFIJ8cb1BjfmZzXjexf/Z0QYH0ts/ZCK6Sa1pE1lmvR1FP1tjI5rZcsFbSlIyfgXLEyPQFJiZfC4yunUldb9NG72dkDQfRF+GiM6kYwoDU5lEm8ZNvEP9nb5tWmOLsR/cbXvmRfBLWnPy3/TMvvp29qbTjjzCdaHNWP+Lz4hV9PRB/zTbaXxDvJ0WV69iFrRFpRRgGH3C6c1lEfNFG7nsaBZyWj/RH7qP+8fdmvJGYLMsewK7CK/IIYMkUmLC8q2IP+nQDzvOM9TH3cDJy8lglwM8GrN15pfoxbJqVrq58i/I3FNpfdzqiw9J0Tvf7xFITyUJ2bhdH2z4gOCtQfzx/pBHKZONFATEUelh848UL/EPeWllOM9f+dVbU"
+                  "sha256":  "e2197bc828be56341f94770917f9d00393a57ce00f28dfefef4ab166531fa8b1",
+                  "signature":  "wTzFYkHVBMFFkxcsU3MD692QYQ1UpHlbvYF4ghJfzrf/XMLs5ktMgYjzrF2ymdp8op9+aKqUyLM7EUYL1xmVN1nFO6NtkvCG6CzMnTUggSZWH4fAg9BB4AGP2SNR8dQRKcSQtsjUKR8y83mjwRQpAKOe08TmAk3xwFlC9cop6TV7aCfn0MlHlykuMa9mXSBvRxpwolI2s1oBsoqz8AGxdXTqRV0vkpmhXMSyolMvJSSzApulXd3ox8DIAQwAEgK99Kc9y9XWlizLsPYpexMIRKUjwZPwtDEnHz8KZHI9vg8F3W2IenhD8OnaKQpQb6NdvjJNFZWsT4QTGC2L1ZWrq5o3Q0xKUsZKHAVMnaLtdapzAYmJrq1PgtTyqOvxYmkK0ouZIixVpxUIc0A7tFLZ3BzRG856w0cAjRed2ONtKI9OvLUjE/k/OmYHDAXxONVGwRE0MjcTi823uHl8jppiVx9BcC9gPNloH8Pdod1p2EZL1KgZNynMDCKjO/FqHkUq"
               }
 }

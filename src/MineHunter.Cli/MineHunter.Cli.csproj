@@ -16,4 +16,7 @@
     <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../LaunchGuard.cs" Link="LaunchGuard.cs" />
+  </ItemGroup>
 </Project>

@@ -167,6 +167,14 @@ namespace MineHunter.Risk
                     if (!byId.ContainsKey(l.From) || !byId.ContainsKey(l.To)) continue;
                     if (l.Relation == "runs image" && memberIds.Contains(l.To) && !memberIds.Contains(l.From)) { var p = byId[l.From]; if (!ctxMembers.Contains(p)) ctxMembers.Add(p); memberIds.Add(p.Id); }
                 }
+                // the program file behind a member process goes with it: stopping the process alone leaves the file, which starts again at the next logon or through its watchdog
+                // (the verdict was computed from the members; the file is only added for the plan, and the plan never touches a trusted or Windows file)
+                foreach (var l in links)
+                {
+                    if (l.Relation != "runs image" || !memberIds.Contains(l.From) || memberIds.Contains(l.To) || !byId.ContainsKey(l.To) || !byId.ContainsKey(l.From)) continue;
+                    var img = byId[l.To];
+                    if (img.Kind == EntityKind.File && !img.Trusted && img.P("missing") == null && !ctxMembers.Contains(img)) { ctxMembers.Add(img); memberIds.Add(img.Id); }
+                }
                 var sc = Compute(members);
                 string why; var verdict = Decide(sc, out why);
                 // a game cheat or similar user tool looks like malware to every scanner (packed, unsigned, injects into other programs). It is not a miner: unless something
@@ -318,6 +326,21 @@ namespace MineHunter.Risk
                 int strong = g.Count(e => e.Evidence.Where(x => x.Weight > 0 && x.Category != EvidenceCategory.Signature && x.Category != EvidenceCategory.Location).Sum(x => x.Weight) >= 6);
                 var arr = g.ToList();
                 for (int i = 1; i < arr.Count; i++) links.Add(new Link(arr[0].Id, arr[i].Id, "same folder"));
+            }
+
+            // 2b. a miner configuration lies next to a program: that program is the miner (a packed miner keeps nothing else to recognise it by), and whatever starts it belongs in the same finding
+            foreach (var cfg in ents.Where(e => e.Kind == EntityKind.File && e.Evidence.Any(x => x.RuleId == "MINER.CONFIG_FILE")))
+            {
+                string dir = Path.GetDirectoryName(cfg.Location ?? "");
+                if (string.IsNullOrEmpty(dir) || !PathUtil.IsUserWritable(dir)) continue;
+                var beside = ents.Where(e => e.Kind == EntityKind.File && e.Id != cfg.Id && !e.Trusted && e.P("isPe") == "1" && e.P("missing") == null && e.Location != null &&
+                                             string.Equals(Path.GetDirectoryName(e.Location), dir, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (beside.Count == 0 || beside.Count > 4) continue;           // a folder full of programs (Downloads, Desktop) tells nothing about which one the configuration belongs to
+                foreach (var b in beside)
+                {
+                    b.Add(new Evidence("MINER.PROGRAM_NEXT_TO_CONFIG", EvidenceCategory.Content, 30, "An unsigned program lies in the same folder as a cryptominer configuration (the usual layout of a miner: program + config.json)", cfg.Location));
+                    links.Add(new Link(cfg.Id, b.Id, "configures"));
+                }
             }
 
             // 3. Defender exclusions that cover files of a finding

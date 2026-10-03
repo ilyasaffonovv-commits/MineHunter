@@ -56,9 +56,11 @@ try {
     while ($sw.Elapsed.TotalSeconds -lt $WaitSec -and -not $a3) { $a3 = Alerts | Where-Object { $_.path -like '*updater_helper.exe' } | Select-Object -First 1; if (-not $a3) { Start-Sleep 3 } }
     # the program may already have been reported by File Guard the moment the file appeared: the same story is not told twice
     Note 'the lab program that was registered for autostart has been reported (once, by the first guard that saw it)' ($a3 -ne $null) $(if ($a3) { "$($a3.guard) $($a3.level)" } else { 'no alert' })
+    # the journal is written by the next autostart snapshot (every 15 s), which can be later than the alert (File Guard may have reported the file seconds ago): wait for it
     $j = Join-Path $data 'journal.json'
-    $jt = if (Test-Path $j) { Get-Content $j -Raw } else { '' }
-    Note 'the change is written to the journal of system changes' ($jt -like ('*' + $runName + '*')) ''
+    $sw2 = [Diagnostics.Stopwatch]::StartNew(); $jt = ''
+    while ($sw2.Elapsed.TotalSeconds -lt $WaitSec) { $jt = if (Test-Path $j) { Get-Content $j -Raw } else { '' }; if ($jt -like ('*' + $runName + '*')) { break }; Start-Sleep 3 }
+    Note 'the change is written to the journal of system changes' ($jt -like ('*' + $runName + '*')) ("after $([int]$sw2.Elapsed.TotalSeconds) s")
 }
 finally {
     try { Remove-ItemProperty -Path $runKey -Name $runName -ErrorAction SilentlyContinue } catch { }

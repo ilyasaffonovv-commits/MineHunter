@@ -131,7 +131,7 @@ namespace MineHunter
         {
             { "launches", "запускает" }, { "is running as", "работает как" }, { "started", "запустил" }, { "loads", "загружает" }, { "references", "ссылается на" },
             { "same content", "тот же файл" }, { "same folder", "та же папка" }, { "excludes", "исключает из проверки" }, { "same list", "тот же список" },
-            { "hosts", "содержит" }, { "runs image", "работает как" }, { "started by", "запущен из" }, { "connects to", "подключается к" },
+            { "hosts", "содержит" }, { "runs image", "работает как" }, { "started by", "запущен из" }, { "connects to", "подключается к" }, { "configures", "настраивает" },
         };
 
         public static string Relation(string rel) { string v; return Ru && rel != null && Rel.TryGetValue(rel, out v) ? v : rel; }

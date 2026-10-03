@@ -2,7 +2,7 @@
 import re, glob, json, collections, os
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-src = os.path.join(root, 'src', 'MineHunter')
+src = os.path.join(root, 'src', 'MineHunter.Core')
 
 STR = r'"((?:[^"\\]|\\.)*)"'
 rules = {}

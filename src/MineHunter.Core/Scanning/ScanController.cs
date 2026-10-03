@@ -55,7 +55,7 @@ namespace MineHunter.Scanning
                 catch (Exception ex) { err = ex; Log.Error("scan failed: " + ex); }
                 if (err != null) Error = err.GetBaseException().Message;
                 LastRun = run; running = false;
-                try { global.Dispose(); } catch { }
+                try { string lf = global.Name; global.Dispose(); File.Delete(lf); } catch { }
                 var h = Finished; if (h != null) { try { h(run); } catch (Exception ex) { Log.Warn("scan finished handler: " + ex.Message); } }
             });
             return true;

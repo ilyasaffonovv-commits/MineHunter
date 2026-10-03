@@ -1,5 +1,5 @@
 using System;
-using MineHunter.Update;
+using System.Runtime.CompilerServices;
 
 namespace MineHunter
 {
@@ -9,7 +9,14 @@ namespace MineHunter
         [STAThread]
         public static int Main(string[] args)
         {
-            AppConfig cfg = Bootstrap.Init();
+            try { return Run(args); }
+            catch (Exception ex) when (LaunchGuard.IsMissingOwnFile(ex)) { return LaunchGuard.ShowGui(); }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static int Run(string[] args)
+        {
+            var cfg = Bootstrap.Init();
             return Gui.GuiApp.RunScanWindow(cfg, MineHunter.Scanning.ScanMode.Full, args);
         }
     }

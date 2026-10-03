@@ -412,12 +412,16 @@ namespace MineHunter.Remediation
                 if (!m.Success) { r.Message = "registry location unknown"; return; }
                 hive = m.Groups[1].Value; key = m.Groups[2].Value; value = m.Groups[3].Value;
             }
+            // a per-user override of a file type or protocol (ms-settings, mscfile, an extension ...): the whole key is the override. Deleting only the command leaves a value such as
+            // DelegateExecute behind, and an empty override still shadows what Windows has for the same key (Settings links stop opening), so the key goes, with whatever empty keys it leaves
+            bool handler = IsHandlerOverride(e, hive, key);
             using (var k = RegExport.OpenHive(hive, key, true))
             {
                 if (k == null) { r.Success = true; r.Message = "already gone"; return; }
                 if (Array.IndexOf(k.GetValueNames(), value) < 0) { r.Success = true; r.Message = "already gone"; return; }
                 var kind = k.GetValueKind(value); object old = k.GetValue(value, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
                 var rec = new Dictionary<string, object> { { "hive", hive }, { "key", key }, { "value", value }, { "kind", kind.ToString() }, { "data", RegValueToJson(kind, old) } };
+                if (handler) rec["keyExport"] = RegExport.Export(k);
                 var it = Quarantine.StoreRecord("RegistryValue", hive + "\\" + key + "\\" + value, hive + "\\" + key + "\\" + value, rec, f.Title, "autostart / policy value");
                 r.QuarantineId = it.Id;
 
@@ -433,7 +437,34 @@ namespace MineHunter.Remediation
                     if (rest.Length == 0) k.DeleteValue(value, false); else k.SetValue(value, rest, RegistryValueKind.MultiString);
                 }
                 else k.DeleteValue(value, false);
+                if (handler) foreach (var n in k.GetValueNames()) { try { k.DeleteValue(n, false); } catch { } }
                 r.Success = true; r.Message = "changed (saved as quarantine item " + it.Id + ")";
+            }
+            if (handler) PruneEmptyKeys(hive, key);
+        }
+
+        static bool IsHandlerOverride(Entity e, string hive, string key)
+        {
+            return e != null && e.Id != null && e.Id.StartsWith("reg2:", StringComparison.OrdinalIgnoreCase) && !string.Equals(hive, "HKLM", StringComparison.OrdinalIgnoreCase) &&
+                   Regex.IsMatch(key ?? "", @"^Software\\Classes\\[^\\]+\\shell\\[^\\]+\\command$", RegexOptions.IgnoreCase);
+        }
+
+        /// <summary>Deletes the key and then its parents for as long as they are empty (no values, no subkeys), never above Software\Classes\&lt;class&gt;.</summary>
+        static void PruneEmptyKeys(string hive, string key)
+        {
+            var parts = key.Split('\\');
+            for (int n = parts.Length; n >= 3; n--)
+            {
+                try
+                {
+                    using (var parent = RegExport.OpenHive(hive, string.Join("\\", parts.Take(n - 1)), true))
+                    {
+                        if (parent == null) continue;
+                        using (var child = parent.OpenSubKey(parts[n - 1])) { if (child == null) continue; if (child.ValueCount > 0 || child.SubKeyCount > 0) break; }
+                        parent.DeleteSubKey(parts[n - 1], false);
+                    }
+                }
+                catch { break; }
             }
         }
 
@@ -638,7 +669,11 @@ namespace MineHunter.Remediation
                     case "RegistryValue":
                         {
                             string hive = Convert.ToString(it.Extra["hive"]), key = Convert.ToString(it.Extra["key"]), value = Convert.ToString(it.Extra["value"]);
-                            using (var k = RegExport.OpenHive(hive, key, true, true)) SetRegValueFromJson(k, value, Convert.ToString(it.Extra["kind"]), it.Extra["data"]);
+                            using (var k = RegExport.OpenHive(hive, key, true, true))
+                            {
+                                SetRegValueFromJson(k, value, Convert.ToString(it.Extra["kind"]), it.Extra["data"]);
+                                if (it.Extra.ContainsKey("keyExport")) RegExport.Import(k, Json.Obj(it.Extra["keyExport"]), true);     // the other values of a removed per-user handler key (DelegateExecute ...)
+                            }
                             return null;
                         }
                     case "DefenderExclusion":

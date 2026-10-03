@@ -45,6 +45,18 @@ namespace MineHunter.Remediation
                             {
                                 if (!attempted.Contains(e.Id)) break;
                                 string p = e.P("file") ?? e.Location;
+                                // only hidden streams were to go: the host (a plain text file, a picture) stays by design, so what has to be gone is the streams
+                                var mine = oc.Outcome.Results.Where(x => string.Equals(x.Step.EntityId, e.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (mine.Count > 0 && mine.All(x => x.Step.Type == ActionType.RemoveStream))
+                                {
+                                    foreach (var x in mine)
+                                    {
+                                        string tgt = x.Step.Target ?? ""; int bar = tgt.LastIndexOf('|'); if (bar <= 0) continue;
+                                        string host = tgt.Substring(0, bar), sn = tgt.Substring(bar + 1);
+                                        if (File.Exists(host) && MineHunter.Scanning.AdsScanner.Streams(host).Any(y => string.Equals(y.Name, sn, StringComparison.OrdinalIgnoreCase))) oc.StillPresent.Add("hidden stream still exists: " + host + ":" + sn);
+                                    }
+                                    break;
+                                }
                                 if (!string.IsNullOrEmpty(p) && File.Exists(p)) oc.StillPresent.Add("file still exists: " + p);
                                 break;
                             }

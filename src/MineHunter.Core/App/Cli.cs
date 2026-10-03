@@ -80,6 +80,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
         }
 
         static string Opt(string[] a, string name) { int i = Array.FindIndex(a, x => x.Equals(name, StringComparison.OrdinalIgnoreCase)); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
+        /// <summary>--only: a finding is in scope when one of its entities mentions the text in its location, name, registry data or command line. Without --only everything is.</summary>
+        internal static bool InScope(Finding f, string only) { return only == null || f.Entities.Any(e => Mentions(e.Location, only) || Mentions(e.Title, only) || Mentions(e.P("data"), only) || Mentions(e.P("command"), only)); }
+        static bool Mentions(string text, string only) { return !string.IsNullOrEmpty(text) && text.IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0; }
         static bool Has(string[] a, string name) { return a.Any(x => x.Equals(name, StringComparison.OrdinalIgnoreCase)); }
 
         static int Scan(string[] a, AppConfig cfg)
@@ -115,7 +118,9 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                 Verdict minV = min.StartsWith("susp") ? Verdict.Suspicious : min.StartsWith("mal") ? Verdict.Malware : Verdict.HighRisk;
                 var todo = res.Findings.Where(f => f.Verdict >= minV && (f.ToolClass == null || Has(a, "--include-tools"))).ToList();
                 string only = Opt(a, "--only");
-                if (only != null) todo = todo.Where(f => f.Entities.Any(e => (e.Location ?? "").IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0 || (e.Title ?? "").IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
+                // --only limits everything below, the repeat rounds included: findings that do not mention the text are never touched
+                Func<Finding, bool> inScope = f => InScope(f, only);
+                todo = todo.Where(inScope).ToList();
                 bool all = Has(a, "--all-steps");
                 if (todo.Count == 0) O.WriteLine("\nNothing to neutralise at level '" + min + "' or above.");
                 else
@@ -152,7 +157,7 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                         // a second program of the same infection (or a scheduled task) may put things back, or something new may appear within seconds: look again, clean again, at most twice more
                         for (int round = 2; round <= 3; round++)
                         {
-                            var again = re.Findings.Where(f => f.Verdict >= minV && f.ToolClass == null).ToList();
+                            var again = re.Findings.Where(f => f.Verdict >= minV && f.ToolClass == null && inScope(f)).ToList();
                             if (again.Count == 0) break;
                             O.WriteLine("\nRound " + round + ": " + again.Count + " finding(s) are still there or came back after cleaning.");
                             System.Threading.Thread.Sleep(5000);
@@ -163,7 +168,7 @@ Exit codes: 0 clean, 1 suspicious found, 2 high-risk/malware found, 3 error, 4 c
                             finally { RemediationEngine.ResumeProcesses(frozen2); }
                             re = Verifier.Rescan(opt, again, out2, CancellationToken.None, prog);
                             foreach (var oc in out2) { var ff = again.First(x => x.Id == oc.FindingId); O.WriteLine("  " + ff.Id + ": " + ReportWriter.Badge(ff, oc) + " " + Loc.Title(ff.Title) + "\n       " + Loc.RescanNote(oc.RescanNote)); }
-                            res.PreviousScanIssues.Add("After cleaning, " + again.Count + " finding(s) were still there or came back; round " + round + " " + (re.Findings.Any(f => f.Verdict >= minV && f.ToolClass == null) ? "did not remove everything" : "removed them") + ". Something on this computer may be putting them back: restart Windows and scan again.");
+                            res.PreviousScanIssues.Add("After cleaning, " + again.Count + " finding(s) were still there or came back; round " + round + " " + (re.Findings.Any(f => f.Verdict >= minV && f.ToolClass == null && inScope(f)) ? "did not remove everything" : "removed them") + ". Something on this computer may be putting them back: restart Windows and scan again.");
                         }
                         O.WriteLine("  Rescan result: " + re.Findings.Count(f => f.Verdict >= Verdict.HighRisk) + " high-risk/malware finding(s) remain, " + re.Findings.Count(f => f.Verdict == Verdict.Suspicious) + " suspicious.");
                         if (outcomes.Any(o => o.Outcome != null && o.Outcome.RebootRequired)) O.WriteLine("  ** Restart Windows to finish the cleanup (locked files are scheduled for deletion). **");

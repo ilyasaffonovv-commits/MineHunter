@@ -38,7 +38,8 @@ function Mark([string]$id, [string]$check, [string]$state, [string]$note = '') {
 }
 
 # --------------------------------------------------------------------------- the process vectors (they need live programs)
-$minerish = (@('--algo', 'test-algo', '--url', ('stratum' + '+tcp') + '://127.0.0.1:3333', ('--us' + 'er'), 'MinerLabAdv', ('--pa' + 'ss'), 'x') -join ' ')
+$poolScheme = 'stratum' + '+tcp'      # (the comma binds tighter than '+': building the URL inside the array literal would insert a space)
+$minerish = (@('--algo', 'test-algo', '--url', "${poolScheme}://127.0.0.1:3333", ('--us' + 'er'), 'MinerLabAdv', ('--pa' + 'ss'), 'x') -join ' ')
 $script:Procs = New-Object System.Collections.ArrayList
 function Start-Harness([string]$Path, [string]$ArgLine) { $p = Start-Process -FilePath $Path -ArgumentList $ArgLine -WindowStyle Hidden -PassThru; [void]$script:Procs.Add($p); $p }
 Vec 'P01' 'WATCHDOG PAIR: a running miner-like program and a second program that puts its file back; both are killed together' {
@@ -50,11 +51,14 @@ Vec 'P01' 'WATCHDOG PAIR: a running miner-like program and a second program that
     Start-Harness $w ("--mode respawn --seconds 280 --label MinerLabAdvP01W --source `"$src`" --target `"$script:LA\p01\miner.exe`" $minerish") | Out-Null
     Start-Sleep -Seconds 2
 } { (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like '*MinerLabAdv\p01\*' }).Count -gt 0 -or (Test-Path -LiteralPath "$script:LA\p01\miner.exe") } 'MinerLabAdvP01|\\MinerLabAdv\\p01\\' 'finding' $false $null
-Vec 'P02' 'LONE WATCHDOG (nothing marks it as bad) that silently restores a persistent file after it is removed: the result must be reported honestly' {
+Vec 'P02' 'WATCHDOG OF AN UNKNOWN KIND (nothing marks it as bad) that silently restores a persistent file after it is removed: the result must be reported honestly' {
     $src = Copy-Unique "$script:LA\p02\src.exe"
     New-Item -ItemType Directory -Force "$script:LA\p02" | Out-Null
     Copy-Item $src "$script:LA\p02\payload.exe" -Force
     Set-RegStr $run 'MinerLabAdvRun20' ('"' + "$script:LA\p02\payload.exe" + '" ' + $script:IDLE)
+    # three autostart entries for one program: a finding on its own (infections do this to survive cleaning), so that the claim "removed" can be checked against the watchdog
+    Set-RegStr 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' 'MinerLabAdvRun20b' ('"' + "$script:LA\p02\payload.exe" + '" ' + $script:IDLE)
+    Set-RegStr 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run' 'MinerLabAdvRun20c' ('"' + "$script:LA\p02\payload.exe" + '" ' + $script:IDLE)
     $w = Copy-Unique "$script:LA\p02\w2.exe"
     Start-Harness $w ("--mode respawn --seconds 280 --label MinerLabAdvP02 --source `"$src`" --target `"$script:LA\p02\payload.exe`"") | Out-Null
     Start-Sleep -Seconds 2
@@ -72,7 +76,7 @@ function Get-Snapshot {
     foreach ($k in 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options', 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit', 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components', 'HKCU:\Software\Classes', 'HKCU:\Software\Classes\CLSID', 'HKLM:\SYSTEM\CurrentControlSet\Services') {
         if (Test-Path -LiteralPath $k) { foreach ($n in (Get-ChildItem -LiteralPath $k -ErrorAction SilentlyContinue | ForEach-Object { $_.PSChildName })) { [void]$s.Add("subkey|$k|$n") } } else { [void]$s.Add("nokey|$k") }
     }
-    foreach ($t in (& schtasks.exe /query /fo csv /nh 2>$null | ForEach-Object { ($_ -split '","')[0].Trim('"') } | Sort-Object -Unique)) { [void]$s.Add("task|$t") }
+    foreach ($t in (& schtasks.exe /query /fo csv /nh 2>$null | ForEach-Object { ($_ -split '","')[0].Trim('"') } | Where-Object { -not $_.StartsWith('\SoftLanding\') } | Sort-Object -Unique)) { [void]$s.Add("task|$t") }   # (Windows renews the GUID-named SoftLanding tasks by itself)
     foreach ($ns in 'root\subscription', 'root\default', 'root\cimv2') {
         foreach ($cls in '__EventFilter', '__EventConsumer', '__FilterToConsumerBinding') {
             foreach ($o in (Get-WmiObject -Namespace $ns -Class $cls -ErrorAction SilentlyContinue)) { [void]$s.Add("wmi|$ns|$cls|$($o.Name)") }
@@ -95,10 +99,23 @@ function Remove-AllArtifacts {
     foreach ($pair in @(@('HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows', 'Load'), @('HKCU:\Software\Microsoft\Command Processor', 'AutoRun'))) {
         $v = Get-RegStr $pair[0] $pair[1]; if ($v -and "$v" -match 'MinerLabAdv') { Remove-ItemProperty -LiteralPath $pair[0] -Name $pair[1] -Force -ErrorAction SilentlyContinue }
     }
+    # keys the harness created itself (they were absent in the baseline) go too once they are empty, so the system really ends up as it started
+    foreach ($k in 'HKCU:\Software\Microsoft\Command Processor', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run') {
+        if ($script:snap0 -and ($script:snap0 -contains "nokey|$k") -and (Test-Path -LiteralPath $k)) {
+            $it = Get-Item -LiteralPath $k -ErrorAction SilentlyContinue
+            if ($it -and $it.ValueCount -eq 0 -and $it.SubKeyCount -eq 0) { Remove-Item -LiteralPath $k -Force -ErrorAction SilentlyContinue }
+        }
+    }
     foreach ($k in 'HKCU:\Software\Classes\.mlabadv', 'HKCU:\Software\Classes\CLSID\{7A1B0C2D-0000-4000-8000-00000000AD12}', 'HKCU:\Software\Classes\CLSID\{7A1B0C2D-0000-4000-8000-00000000AD13}',
         'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components\{7A1B0C2D-0000-4000-8000-00000000AD11}', "$ifeo\MinerLabAdvApp.exe", "$ifeo\MinerLabAdvApp10.exe",
         'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit\MinerLabAdvApp9.exe') { Remove-RegKey $k }
     $ms = Get-RegStr 'HKCU:\Software\Classes\ms-settings\shell\open\command' '(default)'; if ($ms -and "$ms" -match 'MinerLabAdv') { Remove-RegKey 'HKCU:\Software\Classes\ms-settings' }
+    # what is left of it after MineHunter removed the value: a chain of empty keys the harness created (the baseline has no ms-settings)
+    if ($script:snap0 -and -not ($script:snap0 -contains 'subkey|HKCU:\Software\Classes|ms-settings') -and (Test-Path -LiteralPath 'HKCU:\Software\Classes\ms-settings')) {
+        $hasValue = $false
+        foreach ($sk in @(Get-Item -LiteralPath 'HKCU:\Software\Classes\ms-settings') + @(Get-ChildItem -LiteralPath 'HKCU:\Software\Classes\ms-settings' -Recurse -ErrorAction SilentlyContinue)) { if ($sk.ValueCount -gt 0) { $hasValue = $true } }
+        if (-not $hasValue) { Remove-RegKey 'HKCU:\Software\Classes\ms-settings' }
+    }
     foreach ($n in 'MinerLabAdvSvc01', 'MinerLabAdvNssm02', 'MinerLabAdvDll03', 'MinerLabAdvFail04', 'MinerLabAdvDrv05') { if (Has-Svc $n) { & sc.exe stop $n 2>&1 | Out-Null; & sc.exe delete $n 2>&1 | Out-Null } ; Remove-RegKey "HKLM:\SYSTEM\CurrentControlSet\Services\$n" }
     foreach ($n in 'MinerLabAdvTask01', 'MinerLabAdvTask02') { if (Has-Task $n) { & schtasks.exe /delete /tn $n /f 2>&1 | Out-Null } }
     foreach ($ns in 'root\subscription', 'root\default', 'root\cimv2') {
@@ -140,6 +157,18 @@ function Quarantine-Ids([string]$SinceStamp) {
     $o = & $exe quarantine list 2>&1 | Out-String
     @($o -split "`r?`n" | Where-Object { $_ -match '^\d{8}-\d{6}-[0-9a-f]{6}\s' } | ForEach-Object { ($_ -split '\s+')[0] } | Where-Object { $_ -ge $SinceStamp })
 }
+# Records of earlier runs would make a new run look like a relapse ("came back after cleaning") and inflate every score, so the harness removes ITS OWN records (the ones that name a
+# MinerLabAdv path or one of its made-up registry keys) before and after a run. Nothing else in the quarantine is touched.
+function Purge-AdvQuarantine {
+    $qdir = Join-Path $env:ProgramData 'MineHunter\Quarantine'
+    if (-not (Test-Path $qdir)) { return }
+    foreach ($d in Get-ChildItem $qdir -Directory -ErrorAction SilentlyContinue) {
+        $m = Join-Path $d.FullName 'manifest.json'
+        if (-not (Test-Path $m)) { continue }
+        $txt = Get-Content -LiteralPath $m -Raw -ErrorAction SilentlyContinue
+        if ($txt -match 'MinerLabAdv|7A1B0C2D-0000-4000-8000-00000000AD1|\.mlabadv') { & $exe quarantine delete $d.Name 2>&1 | Out-Null }
+    }
+}
 
 # =========================================================================== the run
 if ($CleanupOnly) {
@@ -158,9 +187,10 @@ try {
     Log 'step 0: removing leftovers of earlier runs'
     Remove-AllArtifacts
     & powershell -NoProfile -File (Join-Path $labDir 'MinerLabCleanup.ps1') -Quiet | Out-Null
+    Purge-AdvQuarantine
 
     Log 'step 1: baseline snapshot and baseline scan (what MineHunter says about this PC before anything is created)'
-    $snap0 = Get-Snapshot
+    $snap0 = Get-Snapshot; $script:snap0 = $snap0
     Invoke-Mh @('scan', '--quick', '--report-dir', "$Out\scan0", '--json', "$Out\scan0\report0.json", '--quiet') 'scan0' | Out-Null
     $base = Read-Json "$Out\scan0\report0.json"
     $baseKeys = @(); if ($base -and $base.findings) { foreach ($f in $base.findings) { $baseKeys += ($f.title + '|' + ($f.entities | Select-Object -First 1).location) } }
@@ -205,6 +235,16 @@ try {
                 if ($rr -eq 'Remediated' -and -not $stillExists) { Mark $v.Id 'Quarantine' 'PASS' "$rr" }
                 elseif ($rr -eq 'RebootRequired') { Mark $v.Id 'Quarantine' 'PASS' 'removed except for what Windows deletes at the next restart' }
                 else { Mark $v.Id 'Quarantine' 'FAIL' "outcome $rr, artifact still present: $stillExists $(if ($f.remediation) { $f.remediation.stillPresent -join '; ' })" }
+            }
+            'weak' {
+                # one entry of a kind that ordinary programs use all the time (a Run value, a per-user COM server, ...) is not a finding by design: MineHunter reports it when something else
+                # joins it. The test only records what MineHunter says about it and checks that it is not called more than it is.
+                $n = @(Note-Hits $r1 $v)
+                if ($h.Count -gt 0) { Mark $v.Id 'Detect' 'PASS' "reported as a finding: $($h[0].badge) score $($h[0].score)" }
+                elseif ($n.Count -gt 0) { Mark $v.Id 'Detect' 'WEAK' "listed as a note only (score $($n[0].score)); a lone signal of this kind is not a finding" }
+                else { Mark $v.Id 'Detect' 'WEAK' 'not listed (score below the note threshold); a lone signal of this kind is not a finding' }
+                Mark $v.Id 'Explain' 'NOT TESTED' 'nothing to explain: not a finding'
+                Mark $v.Id 'Quarantine' 'NOT TESTED' 'nothing is removed for a lone weak signal'
             }
             'kept' {
                 if ($h.Count -eq 0) { Mark $v.Id 'Detect' 'FAIL' 'a game cheat that sets off the usual signals was not reported at all'; continue }
@@ -282,6 +322,7 @@ try {
     $left = @(); if ($r4 -and $r4.findings) { foreach ($f in $r4.findings) { $k = $f.title + '|' + ($f.entities | Select-Object -First 1).location; if ($baseKeys -notcontains $k) { $left += "$($f.badge) $($f.title)" } } }
     Mark '(all)' 'No false finding after cleanup' $(if ($left.Count -eq 0) { 'PASS' } else { 'FAIL' }) ($left -join '; ')
     foreach ($v in $live) { Mark $v.Id 'Cleanup' 'PASS' '' }
+    if (-not $KeepArtifacts) { Purge-AdvQuarantine }
 }
 finally {
     if (-not $KeepArtifacts) { Remove-AllArtifacts; & powershell -NoProfile -File (Join-Path $labDir 'MinerLabCleanup.ps1') -Quiet | Out-Null; $script:Procs | ForEach-Object { try { $_.Kill() } catch { } } }
@@ -290,16 +331,16 @@ finally {
 # --------------------------------------------------------------------------- report
 foreach ($n in $script:NotCreated) { Mark $n.Id 'Create' 'NOT TESTED' ($n.What + ' - ' + $n.Why) }
 $lines = New-Object System.Collections.ArrayList
-$fail = 0; $pass = 0; $nt = 0
+$fail = 0; $pass = 0; $nt = 0; $weak = 0
 foreach ($id in $res.Keys | Sort-Object) {
     foreach ($c in $res[$id].Keys) {
         $r = $res[$id][$c]
-        if ($r.State -eq 'FAIL') { $fail++ } elseif ($r.State -eq 'PASS') { $pass++ } else { $nt++ }
+        if ($r.State -eq 'FAIL') { $fail++ } elseif ($r.State -eq 'PASS') { $pass++ } elseif ($r.State -eq 'WEAK') { $weak++ } else { $nt++ }
         $desc = ($script:Vectors | Where-Object { $_.Id -eq $id } | Select-Object -First 1).Desc
         [void]$lines.Add(('{0,-5} {1,-34} {2,-10} {3}{4}' -f $id, $c, $r.State, $(if ($r.Note) { $r.Note } else { '' }), $(if ($c -eq 'Create' -and $desc) { "   [$desc]" } else { '' })))
     }
 }
-$summary = "ADVERSARIAL TEST: $pass passed, $fail FAILED, $nt not tested   (version $ver, $((Get-Date) - $tStart))"
+$summary = "ADVERSARIAL TEST: $pass passed, $fail FAILED, $weak weak alone (not a finding by design), $nt not tested   (version $ver, $((Get-Date) - $tStart))"
 $lines.Insert(0, $summary)
 $lines | Set-Content -LiteralPath (Join-Path $Out 'results.txt') -Encoding UTF8
 $res | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $Out 'results.json') -Encoding UTF8

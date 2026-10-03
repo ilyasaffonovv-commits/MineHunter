@@ -20,6 +20,21 @@ jobs:
       - name: Self test
         shell: pwsh
         run: ./MineHunter-cli.exe selftest
+      - name: Update helper (install, roll back, wait for the program to close)
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/update_helper_tests.ps1
+      - name: The portable layout has what it promises
+        shell: pwsh
+        run: |
+          foreach ($f in 'MineHunter.exe', 'MineHunter Quick Scan.exe', 'MineHunter Full Scan.exe', 'MineHunter-cli.exe', 'components/MineHunter.Core.dll', 'components/MineHunter.UI.dll', 'components/MineHunter.UpdateHelper.exe', 'rules/core.json') {
+            if (-not (Test-Path $f)) { throw "missing in the build: $f" }
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $names = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path dist/MineHunter-Portable-x64.zip)).Entries.FullName
+          foreach ($f in 'MineHunter.exe', 'MineHunter Quick Scan.exe', 'MineHunter Full Scan.exe', 'MineHunter-cli.exe', 'components/MineHunter.Core.dll', 'components/MineHunter.UpdateHelper.exe') {
+            if ($names -notcontains $f) { throw "missing in the zip: $f" }
+          }
+          "layout OK: $($names.Count) files in the zip"
       - name: Check version.json against rules/core.json
         shell: pwsh
         run: |
@@ -29,8 +44,9 @@ jobs:
           $v = (Get-Content rules/core.json -Raw | ConvertFrom-Json).version
           if ($m.rules.version -ne $v) { throw "version.json rules.version ($($m.rules.version)) != rules/core.json version ($v)." }
           if (-not $m.rules.signature) { throw "version.json has no rules.signature" }
+          if ($m.app -and (-not $m.app.signature -or -not $m.app.sha256 -or -not $m.app.url)) { throw "version.json app section is incomplete" }
           "manifest OK: rules $v  $h"
       - uses: actions/upload-artifact@v7
         with:
-          name: MineHunter
+          name: MineHunter-Portable-x64
           path: dist/*.zip

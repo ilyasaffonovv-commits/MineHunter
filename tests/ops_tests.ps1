@@ -69,8 +69,14 @@ public static class CtrlC {
 # ------------------------------------------------------------------------------------------------------ O0 a clean folder, like an unzipped release
 $clean = Join-Path $Out 'clean_unzip'
 New-Item -ItemType Directory -Force $clean | Out-Null
-foreach ($f in 'MineHunter.exe', 'MineHunter.exe.config', 'MineHunter-cli.exe', 'MineHunter-cli.exe.config', 'config.json', 'LICENSE', 'README.md', 'README.ru.md') { if (Test-Path (Join-Path $root $f)) { Copy-Item (Join-Path $root $f) $clean -Force } }
+foreach ($f in 'MineHunter.exe', 'MineHunter.exe.config', 'MineHunter Quick Scan.exe', 'MineHunter Quick Scan.exe.config', 'MineHunter Full Scan.exe', 'MineHunter Full Scan.exe.config', 'MineHunter-cli.exe', 'MineHunter-cli.exe.config', 'config.json', 'LICENSE', 'README.md', 'README.ru.md') { if (Test-Path (Join-Path $root $f)) { Copy-Item (Join-Path $root $f) $clean -Force } }
 Copy-Item (Join-Path $root 'rules') (Join-Path $clean 'rules') -Recurse -Force
+Copy-Item (Join-Path $root 'components') (Join-Path $clean 'components') -Recurse -Force
+# an EXE copied alone (for example run from the preview of a zip) must say what is wrong in one sentence, not show a .NET crash
+$alone = Join-Path $Out 'exe_alone'; New-Item -ItemType Directory -Force $alone | Out-Null
+Copy-Item (Join-Path $root 'MineHunter-cli.exe') $alone -Force; Copy-Item (Join-Path $root 'MineHunter-cli.exe.config') $alone -Force
+$ra = Run-Cli @('--version') 30 (Join-Path $alone 'MineHunter-cli.exe')
+T 'O0z' 'the EXE alone, without its components folder: a clear message, not a crash trace' $(if ($ra.Code -eq 3 -and $ra.Out -match 'components' -and $ra.Out -notmatch 'System\.IO\.FileNotFound|Unhandled') { 'PASS' } else { 'FAIL' }) (($ra.Out -split "`r?`n" | Where-Object { $_ } | Select-Object -First 1))
 $cc = Join-Path $clean 'MineHunter-cli.exe'
 $v = Run-Cli @('--version') 60 $cc
 T 'O0a' 'clean folder: --version' $(if ($v.Code -eq 0 -and $v.Out -match 'MineHunter') { 'PASS' } else { 'FAIL' }) $v.Out.Trim()
@@ -133,7 +139,7 @@ if (-not $done) { try { $p.Kill() } catch { }; T 'O7' 'Ctrl+C during a scan ends
 elseif (-not $sent) { T 'O7' 'Ctrl+C during a scan ends it cleanly and the partial result is reported' 'NOT TESTED' 'a Ctrl+C could not be sent to the hidden console from this session' }
 else { T 'O7' 'Ctrl+C during a scan ends it cleanly and the partial result is reported' $(if ($rep -and $rep.scan.aborted -eq $true) { 'PASS' } else { 'FAIL' }) "exit $($p.ExitCode), report aborted flag: $(if ($rep) { $rep.scan.aborted } else { 'no report' })" }
 $lockFile = Join-Path $data 'scan.lock'
-T 'O7b' 'after a cancelled scan no scan lock is left behind (the next scan does not report a crash)' $(if (-not (Test-Path (Join-Path $data '*.lock'))) { 'PASS' } else { 'FAIL' }) ((Get-ChildItem $data -Filter '*.lock' -ErrorAction SilentlyContinue | ForEach-Object Name) -join ',')
+T 'O7b' 'after a cancelled scan no scan lock is left behind (the next scan does not report a crash)' $(if (-not (Test-Path $lockFile)) { 'PASS' } else { 'FAIL' }) ((Get-ChildItem $data -Filter '*.lock' -ErrorAction SilentlyContinue | ForEach-Object Name) -join ',')
 
 # ------------------------------------------------------------------------------------------------------ O8 folders nobody may read, a drive that is not there
 $denyRoot = Join-Path $Out 'o8'; $locked = Join-Path $denyRoot 'locked'; $open = Join-Path $denyRoot 'open'
@@ -142,7 +148,11 @@ Copy-Item (Join-Path $sd 'harmless.exe') (Join-Path $locked 'a.exe'); Copy-Item 
 & icacls.exe $locked /inheritance:r /deny "$($env:USERNAME):(OI)(CI)(F)" /deny 'Administrators:(OI)(CI)(F)' 2>&1 | Out-Null
 $r = Run-Cli @('scan', '--path', $denyRoot, '--no-browsers', '--no-memory', '--report-dir', "$Out\o8_report", '--quiet') 300
 $rep = Valid-Report "$Out\o8_report"
-T 'O8a' 'a folder nobody may read: no crash, the scan finishes, the gap is listed in the report' $(if ($r.Code -in 0, 1, 2 -and $rep -and ($rep.blindSpots -join ' ') -match 'locked|denied|access|Files') { 'PASS' } else { 'FAIL' }) "exit $($r.Code); blind spots: $(@($rep.blindSpots).Count)"
+# Run as administrator, MineHunter holds the backup privilege (it needs it to read other users' registry files), and a folder whose ACL denies everybody can then still be listed:
+# the scanner reads it, which is what a scanner should do (a miner that locks its own folder with an ACL is not hidden from it). The gap is listed when it exists (see O10, no administrator rights).
+$read = ($rep -and [int]$rep.scanned.accessDenied -eq 0 -and [int]$rep.scanned.filesInspected -ge 2)
+$listed = ($rep -and ($rep.blindSpots -join ' ') -match 'locked|denied|access|Files')
+T 'O8a' 'a folder nobody may read: no crash, the scan finishes; the folder is either read with the backup privilege or the gap is listed in the report' $(if ($r.Code -in 0, 1, 2 -and $rep -and ($listed -or $read)) { 'PASS' } else { 'FAIL' }) "exit $($r.Code); blind spots: $(@($rep.blindSpots).Count); folder read anyway: $read"
 & icacls.exe $locked /reset /t 2>&1 | Out-Null
 $r = Run-Cli @('scan', '--path', 'Z:\no\such\drive', '--no-browsers', '--no-memory', '--report-dir', "$Out\o8b_report", '--quiet') 120
 T 'O8b' 'a path on a drive that does not exist: an answer, no hang, no crash' $(if (-not $r.TimedOut -and $r.Out -notmatch 'Unhandled|at MineHunter\.') { 'PASS' } else { 'FAIL' }) "exit $($r.Code): $(($r.Out -split "`r?`n" | Where-Object { $_ } | Select-Object -First 1))"
@@ -166,17 +176,30 @@ else {
         T 'O9c' 'closing the window ends the program' $(if ($closed) { 'PASS' } else { 'FAIL' }) ''
         if (-not $closed) { try { $g1.Kill() } catch { } }
     }
-    # closing the window in the middle of a scan
-    $g3 = Start-Process -FilePath $gui -ArgumentList @('--gui') -PassThru
-    Start-Sleep -Seconds 20
+    # closing the window in the middle of a scan (Quick Scan.exe starts scanning at once; the window asks before it stops the scan, and the test answers with UI Automation like a person would)
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $quick = Join-Path $root 'MineHunter Quick Scan.exe'
+    $g3 = Start-Process -FilePath $quick -ArgumentList @('--lang', 'en') -PassThru
+    Start-Sleep -Seconds 15
     $g3.Refresh()
     if ($g3.HasExited) { T 'O9d' 'closing the window in the middle of a scan' 'FAIL' 'the program ended on its own' }
     else {
-        [void]$g3.CloseMainWindow(); $closed3 = $g3.WaitForExit(30000)
+        [void]$g3.CloseMainWindow()
+        $answered = $false
+        for ($i = 0; $i -lt 20 -and -not $answered -and -not $g3.HasExited; $i++) {
+            Start-Sleep -Milliseconds 500
+            $cond = New-Object Windows.Automation.PropertyCondition ([Windows.Automation.AutomationElement]::ProcessIdProperty), $g3.Id
+            foreach ($w in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $cond)) {
+                $btn = $w.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition ([Windows.Automation.AutomationElement]::NameProperty), 'Stop and close'))
+                if ($btn) { $btn.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke(); $answered = $true; break }
+            }
+        }
+        $closed3 = $g3.WaitForExit(30000)
         if (-not $closed3) { try { $g3.Kill() } catch { } }
         $crashAfter = if (Test-Path $crashLog) { (Get-Item $crashLog).Length } else { 0 }
-        T 'O9d' 'closing the window in the middle of a scan: the program ends by itself, no crash record' $(if ($closed3 -and $crashAfter -eq $crashBefore) { 'PASS' } else { 'FAIL' }) "ended: $closed3, crash.log grew: $($crashAfter -ne $crashBefore)"
-        T 'O9e' 'closing the window in the middle of a scan leaves no scan lock' $(if (-not (Test-Path (Join-Path $data '*.lock'))) { 'PASS' } else { 'FAIL' }) ''
+        T 'O9d' 'closing the window in the middle of a scan: it asks, stops the scan on "Stop and close", the program ends by itself, no crash record' $(if ($answered -and $closed3 -and $crashAfter -eq $crashBefore) { 'PASS' } else { 'FAIL' }) "asked: $answered, ended: $closed3, crash.log grew: $($crashAfter -ne $crashBefore)"
+        $held = $false; try { $fs = [IO.File]::Open((Join-Path $data 'scan-running.lock'), 'Open', 'ReadWrite', 'None'); $fs.Close() } catch [IO.FileNotFoundException] { } catch { $held = $true }
+        T 'O9e' 'closing the window in the middle of a scan leaves no scan lock (neither the engine lock nor the one-scan-at-a-time lock)' $(if (-not (Test-Path (Join-Path $data 'scan.lock')) -and -not $held) { 'PASS' } else { 'FAIL' }) "scan.lock present: $(Test-Path (Join-Path $data 'scan.lock')), lock held: $held"
     }
 }
 

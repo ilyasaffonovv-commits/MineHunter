@@ -149,7 +149,7 @@ namespace MineHunter.Scanning
                         string fexe = PathUtil.ExtractExecutable(Environment.ExpandEnvironmentVariables(fc));
                         if (!string.IsNullOrEmpty(fexe) && File.Exists(fexe)) { var fe = ctx.Files.Inspect(fexe, FileRole.PersistenceTarget); if (fe != null && fe.Trusted) continue; }
                         var e = Persist.Evaluate(ctx, "svcfail:" + name, EntityKind.Registry, "Service recovery command: " + name, @"HKLM\SYSTEM\CurrentControlSet\Services\" + name + @"\FailureCommand", fc, "service recovery command", ev =>
-                            ev.Add(new Evidence("SVC.FAILURE_COMMAND", EvidenceCategory.Persistence, 14, "A service is set to run a program whenever it fails (a stealthy way to restart a payload that was killed)", Text.Trunc(fc, 200))));
+                            ev.Add(new Evidence("SVC.FAILURE_COMMAND", EvidenceCategory.Persistence, !string.IsNullOrEmpty(fexe) && PathUtil.IsUserWritable(fexe) ? 26 : 14, "A service is set to run a program whenever it fails (a stealthy way to restart a payload that was killed)", Text.Trunc(fc, 200))));
                         if (e != null) { e.Set("hive", "HKLM"); e.Set("key", @"SYSTEM\CurrentControlSet\Services\" + name); e.Set("value", "FailureCommand"); e.Set("data", fc); }
                     }
                 }

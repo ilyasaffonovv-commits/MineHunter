@@ -8,8 +8,9 @@ Of particular interest: making MineHunter delete or quarantine something it shou
 
 ## What to rely on
 
-- Network: one HTTPS GET of the public `version.json` and of the rule pack it names. Nothing about the machine is sent. Plain `http` is accepted only for loopback addresses, which the tests use.
+- Network: HTTPS GET of the public `version.json` and, when newer, of the rule pack and the release archive it names. Nothing about the machine is sent. Plain `http` is accepted only for loopback addresses, which the tests use. The optional VirusTotal lookup is off by default and sends only the SHA-256 of a file.
 - A rule pack is installed only if its SHA-256 matches the manifest and its RSA-SHA256 signature verifies against the public key compiled into the program. The private key is not in this repository.
+- A new program version is installed only after the user clicks, and only if the announcement carries a valid RSA-SHA256 signature and the archive matches the signed SHA-256 and size; the separate updater keeps a backup and rolls back on any error. See [docs/UPDATES.md](docs/UPDATES.md).
 - `%ProgramData%\MineHunter` is writable only by SYSTEM and Administrators.
 - Neutralization saves what it removes before removing it. Critical Windows processes and trusted system files are not touched.
 
