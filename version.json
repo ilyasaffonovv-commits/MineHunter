@@ -1,11 +1,20 @@
 {
-    "latestVersion":  "1.0.1",
+    "latestVersion":  "1.1.0",
     "releaseUrl":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
-    "notes":  "MineHunter 1.0.1: reports moved next to the EXE, scheduled-task COM-handler detection, 5 new rules.",
+    "notes":  "MineHunter 1.1.0: three programs on one engine, new window, real-time guards, schedule, signed self-update, drivers and Windows health.",
     "rules":  {
                   "version":  "2026.10.04.1",
                   "url":  "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",
                   "sha256":  "e2197bc828be56341f94770917f9d00393a57ce00f28dfefef4ab166531fa8b1",
                   "signature":  "wTzFYkHVBMFFkxcsU3MD692QYQ1UpHlbvYF4ghJfzrf/XMLs5ktMgYjzrF2ymdp8op9+aKqUyLM7EUYL1xmVN1nFO6NtkvCG6CzMnTUggSZWH4fAg9BB4AGP2SNR8dQRKcSQtsjUKR8y83mjwRQpAKOe08TmAk3xwFlC9cop6TV7aCfn0MlHlykuMa9mXSBvRxpwolI2s1oBsoqz8AGxdXTqRV0vkpmhXMSyolMvJSSzApulXd3ox8DIAQwAEgK99Kc9y9XWlizLsPYpexMIRKUjwZPwtDEnHz8KZHI9vg8F3W2IenhD8OnaKQpQb6NdvjJNFZWsT4QTGC2L1ZWrq5o3Q0xKUsZKHAVMnaLtdapzAYmJrq1PgtTyqOvxYmkK0ouZIixVpxUIc0A7tFLZ3BzRG856w0cAjRed2ONtKI9OvLUjE/k/OmYHDAXxONVGwRE0MjcTi823uHl8jppiVx9BcC9gPNloH8Pdod1p2EZL1KgZNynMDCKjO/FqHkUq"
-              }
+              },
+    "app":  {
+                "version":  "1.1.0",
+                "url":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/download/v1.1.0/MineHunter-Portable-x64.zip",
+                "sha256":  "14e15409ae7e13ca5d9d2a1f2718e3b544113382cab8d97d6c7c7aef35066c30",
+                "size":  1771587,
+                "minVersion":  "1.0.0",
+                "notes":  "MineHunter 1.1.0: three programs on one engine, new window, real-time guards, schedule, signed self-update, drivers and Windows health.",
+                "signature":  "p2VKxyIrpcrjc50bSGBp9Kqsz8a5vGOitYC7UNl9F6ibeeqJPLXwc6eqeH0RSFFE9rCkF34KA/6ZY07+j0wBCSM4qbcZuzt+NZD/6MEY3n8syDfoMH4ovLImgeC037iD+9QizIywZ5sVQSoSRwGs81Y/cSM+RVvp9sIcR/im5lyqLTDNcfVSpznJ7T8IH8XNB079Ye7A5v87DONe4It0sqEvADr+vY102J/VWLbwiae2dkQSh5007+396BGG2L4hnjcz8ufKbK7JYwDL2FXKuG6cnlHa1LcZEAWaJlkB7WN3qpPrTqHX3sE/pb0Ss6FxffZ0Y3j6evpGF8KTlLkRbumqeTQZyNSuo72Og3zn+F5we7LGBdgsc6X5RIDB9GCEXZtMUtVFilLY6okTU3ulzs3c6wFhaw+TBEuk8fb757enLpBQcFzQQXFg0/MTRvwzgOHpvL9iYo3NN8FqgqbuqtbMImjOROerJ6elgHKMR0QEevF/R7PyQKz7rpUIcuao"
+            }
 }
