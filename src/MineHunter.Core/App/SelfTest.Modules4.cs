@@ -74,7 +74,7 @@ namespace MineHunter
 
                 string miner = Obf.J("stra", "tum+tcp://pool.example.invalid:3333") + " -u 49WalletNotReal -p x --" + Obf.J("don", "ate-level") + " 1 -a " + Obf.J("r", "x/0");
                 pg.Handle(new ProcRec { Pid = 9020, ParentPid = 9010, Name = "powershell", Path = ps, Cmd = "powershell.exe -c .\\runner.exe -o " + miner, Started = DateTime.Now });
-                Check("a complete miner command line is reported even when started by a trusted shell", alerts2.Count == n + 1 && alerts2.Last().Level == AlertLevel.Dangerous, alerts2.Count == n ? "no alert" : alerts2.Last().Level.ToString());
+                Check("a complete miner command line is reported even when started by a trusted shell", alerts2.Count == n + 1 && alerts2.Last().Level == AlertLevel.Dangerous, alerts2.Count == n ? "no alert" : string.Join(" || ", alerts2.Skip(n).Select(x => x.Level + ": " + x.Text + " [" + string.Join("; ", x.Reasons) + "]")));
 
                 // an unknown program from Temp with a miner command line and miner content
                 string dropper = Path.Combine(tmp, "svc_update.exe"); File.WriteAllBytes(dropper, File.ReadAllBytes(notepad).Concat(Encoding.ASCII.GetBytes("\n" + MinerWords() + "\n")).ToArray());
