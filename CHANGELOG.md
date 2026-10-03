@@ -38,6 +38,8 @@ A finished Windows program built around the same detection engine: three program
 - Gen Digital (Avast, AVG, Norton) and Avira are trusted publishers: their boot-time tool `icarus_rvrt.exe` showed up in `BootExecute` for a few minutes on the author's PC and was called Suspicious.
 - After cleaning, a finding whose only action was removing a hidden NTFS stream is verified by the stream, not by the host file (which stays by design); it used to be reported as "partial".
 - The "Show the minor notes" button on a clean result no longer stretches into a big empty box.
+- The update helper now finds a MineHunter program that is still open in the folder even when the folder was given in the short 8.3 form (found by the GitHub Actions run).
+- Real-time guards: a category with a decisive signal is no longer capped at 45, so a pool address plus the XMRig donate option in one command line is "Dangerous" by itself (the result used to depend on what else the same program had done before).
 - Starting any program without its `components` folder (for example from the preview of a zip file) now shows one clear sentence in Russian and English instead of a .NET crash window.
 - False positives found on a real PC were fixed (words of a miner in the memory of an idle chat program; ordinary per-user file types).
 - A fix in the update helper found by its own tests: after a failed update it tried to restore a file that had never been replaced and reported that the previous version could not be restored.
