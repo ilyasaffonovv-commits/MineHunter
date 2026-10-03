@@ -62,7 +62,8 @@ namespace MineHunter.UpdateHelper
             int pid; if (int.TryParse(Get(a, "pid"), out pid)) WaitForExit(pid, 90);
 
             var running = StillRunning(dst);
-            for (int i = 0; i < 40 && running.Count > 0; i++) { Thread.Sleep(1500); running = StillRunning(dst); }
+            int waitSeconds; if (!int.TryParse(Get(a, "wait"), out waitSeconds)) waitSeconds = 60;
+            for (int i = 0; i < waitSeconds * 2 / 3 && running.Count > 0; i++) { Thread.Sleep(1500); running = StillRunning(dst); }
             if (running.Count > 0)
             {
                 Log("still running: " + string.Join(", ", running));
@@ -149,7 +150,18 @@ namespace MineHunter.UpdateHelper
                 {
                     string rel = f.Substring(backup.TrimEnd('\\').Length + 1);
                     if (rel == "_created.txt") continue;
-                    try { string t = Path.Combine(dst, rel); Directory.CreateDirectory(Path.GetDirectoryName(t)); File.Copy(f, t, true); }
+                    try
+                    {
+                        string t = Path.Combine(dst, rel);
+                        // a file that was never replaced (it is the one that could not be, for example) is already what it was: nothing to put back
+                        try { if (File.Exists(t) && Hash(t) == Hash(f)) continue; } catch { }
+                        Directory.CreateDirectory(Path.GetDirectoryName(t));
+                        for (int attempt = 1; ; attempt++)
+                        {
+                            try { File.Copy(f, t, true); break; }
+                            catch (IOException) when (attempt < 4) { Thread.Sleep(500); }
+                        }
+                    }
                     catch (Exception ex) { ok = false; Log("restore " + rel + ": " + ex.Message); }
                 }
                 string list = Path.Combine(backup, "_created.txt");
