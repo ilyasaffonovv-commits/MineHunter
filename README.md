@@ -18,6 +18,10 @@ This repository is the source code. If you only want to run the program, take `M
 
 Requirements: Windows 10 or 11 x64 and .NET Framework 4.7.2 or newer, which is part of current Windows builds. No installer (one is planned). The programs ask for administrator rights; without them services, scheduled tasks, WMI, the registry of other users and other users' processes cannot be read, and the report says so.
 
+If Windows or an antivirus stops it: SmartScreen ("More info", then "Run anyway") is the usual one. A security product may also distrust an unsigned program that reads processes and the registry, which is what a scanner does; I could not test other antivirus products (Defender is off on the test PC). If a file is quarantined by one, restore it, add the unpacked folder to that product's exclusions and run again, and please report the detection name through the false positive template. Nothing in MineHunter changes the PC during a scan; only the Neutralize button does, and it saves what it removes to the quarantine first.
+
+What to expect: on the author's fast PC the first quick scan took 1.5 minutes and the first full scan under 5 minutes; a slower PC or disk will take noticeably longer, the full scan most of all. The window stays responsive and Stop works at any time.
+
 ## Three programs, one engine
 
 | File | What it does |
