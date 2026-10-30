@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.2.0 (2026-10-31)
+
+A safety release for the self-update, plus a few new detections. If you have 1.1.0, it updates itself; if the update ever fails, the old version stays and keeps working.
+
+### Safer updates
+
+- **An update cut short no longer leaves a half-installed program.** If the PC loses power or the helper is killed in the middle of copying files, the next start of any MineHunter program notices it, puts the saved files back by itself and starts normally. The helper leaves a small marker file before the copy and removes it when it is done. If the marker belongs to some other folder, it is left alone.
+- **A rule pack can no longer be swapped for an older signed one.** The signature of a pack was checked, but an attacker who could change the announcement could still offer an old, genuinely signed pack as a "new" one. The program now also checks that the version inside the pack is the one the announcement promises, and refuses a pack older than the rules it already has.
+- **Rule files are replaced in one step** (no moment when the file is half written).
+- **Cleaner rollback:** the temporary copy of the helper is removed after a rollback, and after a manual rollback the start page says "The previous version was restored." instead of showing an error.
+- Tested with the real 1.1.0 build: it found the new announcement, downloaded the package, checked the signature, size and SHA-256, installed it, and then the new version rolled itself back to 1.1.0 with every file byte for byte as before. Your `config.json` and `Reports` folder were not touched in either direction. A package with one changed byte is refused.
+
+### New detections (rule pack 2026.10.31.1)
+
+- Commands that switch Windows Update off (`sc config wuauserv start= disabled`, the policy values, `WaaSMedicSvc`).
+- Commands that switch off the Microsoft list of vulnerable drivers, or let Windows load unsigned and test-signed drivers (`bcdedit /set testsigning on`).
+- A kernel driver installed from Temp, AppData or another user-writable folder (miners do this to load WinRing0-style drivers).
+- The fake "I am not a robot" trick (ClickFix): a command that carries the text of such a page together with a download or hidden code.
+- `conhost.exe --headless powershell ...` (a way to run a command with no window).
+- XMRig-only command-line options (`--randomx-1gb-pages`, `--cpu-no-yield`, `--cpu-max-threads-hint`, and similar).
+- More miner file names (xmrig-proxy, p2pool, qli-client, rqiner, apoolminer) and more mining pool domains. These are normal mining programs, not viruses by themselves: MineHunter reports them because it looks for miners you did not install on purpose. If you mine on purpose, add them to the exclusions.
+- The standard antivirus test file (EICAR) is now recognised and reported with a note that it is harmless. It is what people use to check that a scanner works.
+- Every new rule comes with sample lines that must match and sample lines that must not; the self test runs them.
+
+### Checks
+
+- Self test: 354 checks pass on the test PC (351 before; the exact count depends a little on the PC). New: the rule pack version binding (two checks) and the EICAR file, tested in memory so that no real antivirus on the PC is triggered.
+- `tests/update_helper_tests.ps1` has a new test for the recovery after an interrupted update (and a negative test for a marker of another folder).
+- The old 1.1.0 engine loads the new rule pack and passes its own self test with it, so users of 1.1.0 can receive the new rules before they update the program.
+
 ## 1.1.0 (2026-10-03)
 
 A finished Windows program built around the same detection engine: three programs, a new window, real-time monitoring, scheduled scans, a signed self-update, drivers and Windows-health pages. Detection was also hardened (see "Detection and safety").

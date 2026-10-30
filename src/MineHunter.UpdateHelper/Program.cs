@@ -46,6 +46,9 @@ namespace MineHunter.UpdateHelper
             }
         }
 
+        static string MarkerFile(string resultFile) { return Path.Combine(Path.GetDirectoryName(resultFile) ?? ".", "inprogress.json"); }
+        static void DropMarker(string marker) { try { if (File.Exists(marker)) File.Delete(marker); } catch (Exception ex) { Log("marker: " + ex.Message); } }
+
         static string Get(Dictionary<string, string> a, string k) { string v; return a.TryGetValue(k, out v) ? v : null; }
 
         static void Log(string m)
@@ -97,7 +100,10 @@ namespace MineHunter.UpdateHelper
                 return 1;
             }
 
-            // 2. copy
+            // 2. copy. The marker says "files are being replaced": if the PC loses power or the helper is killed here, the next start of any MineHunter program
+            // sees the marker and puts the saved files back (LaunchGuard.RecoverInterruptedUpdate). It is removed as soon as the update ends either way.
+            string marker = MarkerFile(result);
+            try { File.WriteAllText(marker, "{\"dst\":\"" + Esc(dst) + "\",\"backup\":\"" + Esc(backup) + "\",\"from\":\"" + Esc(from) + "\",\"to\":\"" + Esc(to) + "\",\"time\":\"" + DateTime.Now.ToString("o") + "\"}", new UTF8Encoding(false)); } catch (Exception ex) { Log("marker: " + ex.Message); }
             string error = null;
             try
             {
@@ -119,12 +125,14 @@ namespace MineHunter.UpdateHelper
                 Log("failed: " + error + " - rolling back");
                 bool ok = Restore(dst, backup);
                 foreach (var f in Directory.GetFiles(dst, "*.mhnew", SearchOption.AllDirectories)) { try { File.Delete(f); } catch { } }
+                if (ok) DropMarker(marker);   // a failed restore keeps the marker, so the next start tries again
                 Report(result, false, ok, from, to, error + (ok ? " The previous version was put back and keeps working." : " The previous version could NOT be fully restored: reinstall from the release page."));
                 Restart(restart, dst); Clean(cleanup);
                 return 1;
             }
 
             Log("done");
+            DropMarker(marker);
             Report(result, true, false, from, to, "");
             Restart(restart, dst); Clean(cleanup);
             return 0;
@@ -136,8 +144,15 @@ namespace MineHunter.UpdateHelper
             if (dst == null || backup == null || !Directory.Exists(backup)) return 2;
             int pid; if (int.TryParse(Get(a, "pid"), out pid)) WaitForExit(pid, 60);
             bool ok = Restore(dst, backup);
-            if (result != null) Report(result, ok, ok, "", "", ok ? "" : "The previous version could not be restored.");
-            Restart(restart, dst);
+            if (ok && result != null) DropMarker(MarkerFile(result));
+            bool interrupted = Get(a, "interrupted") != null;
+            string from = Get(a, "from") ?? "", to = Get(a, "to") ?? "";
+            if (result != null)
+            {
+                if (interrupted) Report(result, false, ok, from, to, "The update was interrupted (the PC was switched off or the program was closed during the copy)." + (ok ? "" : " The previous version could not be fully restored: reinstall from the release page."));
+                else Report(result, ok, ok, from, to, ok ? "" : "The previous version could not be restored.");
+            }
+            Restart(restart, dst); Clean(Get(a, "cleanup"));
             return ok ? 0 : 1;
         }
 

@@ -9,6 +9,10 @@
 - The Hacker News, сентябрь 2026, [модули REVSTEALER отключают Windows Update и Defender ради майнера](https://thehackernews.com/2026/09/four-revstealer-linked-modules-disable.html)
 - Infosecurity Magazine, [вредоносные расширения VS Code для криптоджекинга](https://www.infosecurity-magazine.com/news/microsoft-vs-code-cryptojacking/)
 - Microsoft Support, [VulnerableDriver:WinNT/Winring0](https://support.microsoft.com/en-us/windows/microsoft-defender-antivirus-alert-vulnerabledriver-winnt-winring0-eb057830-d77b-41a2-9a34-015a5d203c42)
+- Cynet, [ClickFix: фальшивые CAPTCHA в свежих кампаниях](https://cynet.com/blog/clickfix-fake-captcha-usage-surges-in-recent-campaigns) (текст «I am not a robot - reCAPTCHA VerifID: …» в скопированной команде). Разбор ClickFix в блоге Microsoft Security (август 2025) в поиске получен не был: использована только страница, которая его пересказывает
+- Sigma, [Powershell Executed From Headless ConHost Process](https://sigma.controlassurance.com/rules/proc_creation_win_conhost_headless_powershell/): `conhost.exe --headless powershell`
+- Sigma, [изменение VulnerableDriverBlocklistEnable](https://sigma.controlassurance.com/rules/registry_set_vulnerable_driver_blocklist_disable/): отключение списка уязвимых драйверов Microsoft
+- NinjaOne, [как включить и отключить список уязвимых драйверов Microsoft](https://www.ninjaone.com/blog/enable-or-disable-microsoft-vulnerable-driver-blocklist/)
 
 ## Приёмы и соответствующие проверки
 
@@ -34,6 +38,16 @@
 | Конфигурация майнера и пул-прокси | Строки и параметры в командной строке (`stratum`, шаблоны кошельков Monero и Ethereum, `--donate-level`), домены пулов из DNS-кэша, порты майнинга, долгие внешние соединения неподписанных программ. Прокси на порту 443 отдельно не распознаётся. |
 | Вредоносные расширения VS Code и браузеров | Расширения VS Code, Cursor и Windsurf: код майнера и скрипты, отключающие защиту или скачивающие код. Расширения браузеров: код майнера, опасные разрешения, установка по политике. |
 | Подмена имён и сведений о версии | Гомоглифы (`ReaItekHD`, заглавная I вместо l), имена системных файлов не в папке Windows, сведения о версии, выдающие компонент Windows у неподписанного файла (вес 22), и сведения известного производителя без его подписи (вес 3, так выглядят и обычные сборки). |
+| Отключение Центра обновления Windows установщиком майнера | `CMD.WINUPDATE.DISABLE`: `sc config wuauserv start= disabled`, остановка или удаление `wuauserv`/`usosvc`/`WaaSMedicSvc`, политика `NoAutoUpdate=1`, `Start=4` у этих служб. Идея взята из описания модулей REVSTEALER (см. источники). |
+| Отключение списка уязвимых драйверов, тестовый режим подписи, драйвер ядра из пользовательской папки | `CMD.DRIVER.BLOCKLIST_OFF` (`VulnerableDriverBlocklistEnable` = 0), `CMD.BCDEDIT.UNSIGNED_DRIVERS` (`testsigning on`, `nointegritychecks on`), `CMD.DRIVER.KERNEL_USERPATH` (`sc create ... type= kernel` с файлом `.sys` из Temp, AppData, ProgramData, Public). Нужны, чтобы загрузить WinRing0-подобный драйвер (см. строку про уязвимые драйверы выше). |
+| ClickFix: страница просит вставить команду в окно «Выполнить» | `CMD.CLICKFIX.LURE`: в одной команде есть текст фальшивой проверки («I am not a robot», reCAPTCHA, Verification ID, «verify you are human», Cloudflare) и скачивание или скрытый код (`iex`, `irm`, `downloadstring`, `-enc`, ссылка). Один текст без загрузки не срабатывает. Текст «Verification ID» взят из описания одной кампании, это не общий признак всех ClickFix-страниц. |
+| Запуск команды без окна через `conhost --headless` | `CMD.CONHOST.HEADLESS` (небольшой вес: приём редкий, но не только вредоносный). |
+| Параметры, которые есть только у XMRig | `CMD.MINER.XMRIG_OPTIONS`: `--randomx-1gb-pages`, `--randomx-wrmsr`, `--cpu-no-yield`, `--cpu-max-threads-hint`, `--cinit-*` и другие. Общие слова вроде `--pause` не срабатывают (проверено примерами). |
+| Тестовый файл антивирусов EICAR | `REP.EICAR_TEST_FILE`: файл из 68 байт (допускаются пробелы или перевод строки в конце, всего не больше 128 байт). Файл безвреден; его нужно отмечать, чтобы можно было проверить, что сканер работает. Строка теста в программах собирается при запуске из частей, иначе другие антивирусы принимали бы за тестовый файл сам MineHunter. |
+
+Оговорки к новым правилам (1.2.0):
+- Имена `qli-client`, `rqiner`, `apoolminer`, `p2pool`, `xmrig-proxy` и новые домены пулов добавлены как имена майнинг-программ. Это обычные майнеры, в найденных источниках нет данных, что они сами вредоносны (про `apoolminer` источников не нашлось вообще). MineHunter ищет майнеры, которые владелец не ставил, поэтому такой файл отмечается; кто майнит осознанно, добавляет его в исключения. Что именно эти имена встречаются в атаках, я не проверял.
+- Правила командной строки проверены только на примерах из самотеста (в каждом несколько строк «да» и «нет») и на безвредных командах; на настоящих образцах вредоносного ПО они не запускались.
 
 Не реализовано:
 - Сопоставление имён известных утилит (CrystalDiskInfo, HWMonitor, DDU, FurMark) с неподписанными файлами из пользовательских папок. Такие файлы попадают под общие правила: расположение, отсутствие подписи, автозапуск, строки майнера.

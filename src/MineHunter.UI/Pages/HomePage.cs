@@ -99,7 +99,7 @@ namespace MineHunter.Gui
             if (m.LastUpdateResult != null)
             {
                 var r = m.LastUpdateResult; bool ok = r.Ok;
-                var line = Ui.Cols(new[] { "Auto", "*" }, Ui.Badge(ok ? "check" : "warn", ok ? Ui.Good : Ui.Orange, 36), Ui.Txt(ok ? L("MineHunter was updated to " + r.To + ".", "MineHunter обновлён до версии " + r.To + ".") : L("The update to " + r.To + " did not work" + (r.RolledBack ? " and the previous version was put back; it keeps working. " : ". ") + r.Error, "Обновление до " + r.To + " не удалось" + (r.RolledBack ? ", предыдущая версия возвращена и работает. " : ". ") + r.Error), 13, null, null, true, new Thickness(12, 0, 0, 0)));
+                var line = Ui.Cols(new[] { "Auto", "*" }, Ui.Badge(ok ? "check" : "warn", ok ? Ui.Good : Ui.Orange, 36), Ui.Txt(ok && r.RolledBack ? L("The previous version was restored.", "Предыдущая версия восстановлена.") : ok ? L("MineHunter was updated to " + r.To + ".", "MineHunter обновлён до версии " + r.To + ".") : L("The update to " + r.To + " did not work" + (r.RolledBack ? " and the previous version was put back; it keeps working. " : ". ") + r.Error, "Обновление до " + r.To + " не удалось" + (r.RolledBack ? ", предыдущая версия возвращена и работает. " : ". ") + r.Error), 13, null, null, true, new Thickness(12, 0, 0, 0)));
                 var banner = Ui.Card(line, 14, Ui.Soft(ok ? Ui.Good : Ui.Orange, 24), Ui.Soft(ok ? Ui.Good : Ui.Orange, 90)); banner.Margin = new Thickness(0, 0, 0, 14); root.Children.Add(banner);
             }
 

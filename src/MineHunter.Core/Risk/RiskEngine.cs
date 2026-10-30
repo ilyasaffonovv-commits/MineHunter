@@ -255,6 +255,7 @@ namespace MineHunter.Risk
             string name = main.Kind == EntityKind.File || main.Kind == EntityKind.Process ? main.Title : main.Title;
             if (f.ToolClass != null) return "Game cheat / hack tool (kept): " + name;
             if (has("REP.KNOWN_BAD_HASH")) return "Known malware: " + name;
+            if (has("REP.EICAR_TEST_FILE")) return "Antivirus test file (harmless): " + name;
             if (has("HOLLOW")) return "Hijacked (hollowed) process: " + name;
             if (has("MINER") ) return (f.Entities.Any(e => e.Kind == EntityKind.Process) ? "Cryptominer running: " : "Cryptominer files: ") + name;
             if (has("BROWSER.EXT_MINER_CODE")) return "Mining code in a browser/editor extension: " + name;

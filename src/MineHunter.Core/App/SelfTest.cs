@@ -958,6 +958,16 @@ namespace MineHunter
                 manifest = man("99.0.0", sha, null);
                 string e4 = Updater.UpdateRules(cfg, Updater.Check(cfg, "2026.01.01.1"));
                 Check("unsigned rule pack is rejected when a signing key is configured", e4 != null && e4.Contains("not signed"), e4);
+                // an old but genuinely signed pack must not pass as a newer one (the signature does not cover the version line of the manifest)
+                manifest = man("99.0.0", sha, goodSig).Replace("\"version\":\"2099.01.01.1\"", "\"version\":\"2099.07.07.1\"");
+                string e5 = Updater.UpdateRules(cfg, Updater.Check(cfg, "2026.01.01.1"));
+                Check("a signed pack whose own version differs from the announced one is rejected", e5 != null && e5.Contains("differs"), e5);
+                manifest = man("99.0.0", sha, goodSig);
+                string e6 = Updater.UpdateRules(cfg, Updater.Check(cfg, "2099.09.09.1"));
+                Check("a signed pack older than the installed rules is rejected", e6 != null && e6.Contains("older"), e6);
+                // in memory only: the real test string on disk would make a running antivirus raise an alarm on this PC
+                var eb = Encoding.ASCII.GetBytes(FileIntel.EicarText);
+                Check("the standard antivirus test file is recognised (also with trailing line break), a lookalike with one letter changed is not", FileIntel.IsEicarContent(eb) && FileIntel.IsEicarContent(Encoding.ASCII.GetBytes(FileIntel.EicarText + "\r\n")) && !FileIntel.IsEicarContent(Encoding.ASCII.GetBytes(FileIntel.EicarText.Replace("EICAR", "EICAS"))) && !FileIntel.IsEicarContent(Encoding.ASCII.GetBytes(FileIntel.EicarText + " x")));
                 var cfgRemote = new AppConfig { UpdateManifestUrl = "http://example.com/version.json", CheckUpdatesOnStart = true };
                 Check("plain http to a non-local host is refused", Updater.Check(cfgRemote, "1").State == UpdateState.Error);
                 srv.Stop(); srv.Close(); srv = null;

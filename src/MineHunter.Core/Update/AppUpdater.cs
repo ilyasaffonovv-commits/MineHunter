@@ -250,7 +250,7 @@ namespace MineHunter.Update
                 string tmp = Path.Combine(Path.GetTempPath(), "mh-upd-" + Guid.NewGuid().ToString("N").Substring(0, 8)); Directory.CreateDirectory(tmp);
                 string helper = Path.Combine(tmp, "MineHunter.UpdateHelper.exe"); File.Copy(helperSrc, helper, true);
                 string cfg = helperSrc + ".config"; if (File.Exists(cfg)) File.Copy(cfg, helper + ".config", true);
-                var args = new List<string> { "rollback", "--dst", installDir.TrimEnd('\\'), "--backup", backup, "--result", ResultFile, "--pid", Process.GetCurrentProcess().Id.ToString() };
+                var args = new List<string> { "rollback", "--dst", installDir.TrimEnd('\\'), "--backup", backup, "--result", ResultFile, "--pid", Process.GetCurrentProcess().Id.ToString(), "--cleanup", tmp };
                 if (!string.IsNullOrEmpty(restartExe)) { args.Add("--restart"); args.Add(restartExe); }
                 Process.Start(new ProcessStartInfo(helper) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = tmp, Arguments = string.Join(" ", args.Select(Quote)) });
                 return null;

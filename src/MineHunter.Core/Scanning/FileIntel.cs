@@ -135,6 +135,12 @@ namespace MineHunter.Scanning
             }
             bool isPe = pe != null;
             e.Set("isPe", isPe ? "1" : "0");
+            if (!isPe && IsEicarTestFile(path, fi.Length))
+            {
+                // the standard antivirus test file: harmless, but it is exactly what a scanner is expected to report (and what people use to check that one works)
+                e.Add(new Evidence("REP.EICAR_TEST_FILE", EvidenceCategory.Reputation, 100, "This is the standard antivirus test file (EICAR). It is harmless: it exists only to check that a scanner reports it", path, true));
+                return;
+            }
             if (!isPe && !nameScript)
             {
                 // not executable content, except a miner's configuration file (pool + wallet): packed miners keep nothing else to recognise them by
@@ -432,6 +438,26 @@ namespace MineHunter.Scanning
                 foreach (var m in ctx.Rules.MinerFileNames)
                     if (on == m) { e.Add(new Evidence("NAME.MINER_ORIGINAL", EvidenceCategory.Content, 30, "Embedded original file name is a known miner (" + m + ")", pe.OriginalName)); break; }
             }
+        }
+
+        // The test string is joined at run time, so that this program does not carry the whole text in its own file (other scanners would take MineHunter for the test file).
+        static readonly string[] EicarParts = { "X5O!P%@AP[4", Convert.ToChar(92) + "PZX54(P^)7CC)7}$", "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!", "$H+H*" };
+        static string _eicar;
+        internal static string EicarText { get { return _eicar ?? (_eicar = string.Concat(EicarParts)); } }
+
+        /// <summary>The 68-byte EICAR file; the standard allows up to 128 bytes with trailing spaces or line breaks.</summary>
+        internal static bool IsEicarTestFile(string path, long length)
+        {
+            if (length < 68 || length > 128) return false;
+            try { return IsEicarContent(File.ReadAllBytes(path)); }
+            catch { return false; }
+        }
+
+        internal static bool IsEicarContent(byte[] b)
+        {
+            if (b == null || b.Length < 68 || b.Length > 128) return false;
+            string t = Encoding.ASCII.GetString(b);
+            return t.StartsWith(EicarText, StringComparison.Ordinal) && t.Substring(EicarText.Length).Trim(' ', (char)9, (char)13, (char)10, (char)26).Length == 0;
         }
 
         static string FormatSize(long n)

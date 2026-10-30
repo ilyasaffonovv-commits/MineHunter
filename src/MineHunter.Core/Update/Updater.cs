@@ -179,14 +179,18 @@ namespace MineHunter.Update
                 string text = Encoding.UTF8.GetString(data);
                 var test = new RulePack(); test.Merge(text, "downloaded");    // must parse
                 if (string.IsNullOrEmpty(test.Version)) return "rule pack has no version";
+                // The signature covers the pack but not the manifest line around it, so an old (genuinely signed) pack could be handed out under a newer
+                // version number. The version inside the signed pack must be the announced one, and must not be older than what is already installed.
+                if (!string.IsNullOrEmpty(info.RulesVersion) && !string.Equals(test.Version, info.RulesVersion, StringComparison.Ordinal)) return "the version inside the rule pack (" + test.Version + ") differs from the announced one (" + info.RulesVersion + ") - rejected";
+                if (!string.IsNullOrEmpty(info.LocalRulesVersion) && string.CompareOrdinal(test.Version, info.LocalRulesVersion) < 0) return "the rule pack is older than the installed rules - rejected";
                 string dir = Path.Combine(RulePack.DataDir, "rules");
                 Directory.CreateDirectory(dir);
                 string dst = Path.Combine(dir, "update-" + Path.GetFileName(uri.LocalPath).Replace("..", ""));
                 if (!dst.EndsWith(".json")) dst += ".json";
                 string tmp = dst + ".tmp";
                 File.WriteAllBytes(tmp, data);
-                if (File.Exists(dst)) File.Delete(dst);
-                File.Move(tmp, dst);
+                // replace in one step: a crash between delete and move used to leave no downloaded pack at all
+                if (File.Exists(dst)) File.Replace(tmp, dst, null); else File.Move(tmp, dst);
                 return null;
             }
             catch (Exception ex) { return ex.Message; }

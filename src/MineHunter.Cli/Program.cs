@@ -8,6 +8,7 @@ namespace MineHunter
     {
         public static int Main(string[] args)
         {
+            if (LaunchGuard.RecoverInterruptedUpdate()) return 0;   // an update that was cut short is rolled back before anything else starts
             try { return Run(args); }
             catch (Exception ex) when (LaunchGuard.IsMissingOwnFile(ex)) { return LaunchGuard.ShowConsole(); }
         }

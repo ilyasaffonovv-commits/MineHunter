@@ -37,6 +37,7 @@ try {
     Note 'the user''s config.json is not overwritten by the package' ((Read-Text (Join-Path $inst 'config.json')) -eq 'USER-CONFIG') ''
     Note 'the old files are saved in the backup folder and the result says ok (from -> to)' ((Read-Text (Join-Path $d 'bk\MineHunter.exe')) -eq 'OLD-EXE' -and (Read-Text (Join-Path $d 'bk\components\core.dll')) -eq 'OLD-CORE' -and $r.ok -eq $true -and $r.from -eq '1.0.0' -and $r.to -eq '1.1.0') ($r | ConvertTo-Json -Compress)
     Note 'no temporary .mhnew files are left behind' (@(Get-ChildItem $inst -Recurse -Filter '*.mhnew' -ErrorAction SilentlyContinue).Count -eq 0) ''
+    Note 'the "update is being copied" marker is gone after a good update' (-not (Test-Path (Join-Path $d 'res\inprogress.json'))) ''
 
     # ---- 2. rollback command restores the saved version
     $code2 = Run-Helper ('rollback --dst "' + $inst + '" --backup "' + (Join-Path $d 'bk') + '" --result "' + (Join-Path $d 'res\rb.json') + '"')
@@ -49,6 +50,7 @@ try {
     $r3 = Get-Content $res -Raw | ConvertFrom-Json
     Note 'when one file cannot be replaced the update fails, reports it, and says it rolled back' ($code3 -eq 1 -and $r3.ok -eq $false -and $r3.rolledBack -eq $true -and $r3.error.Length -gt 10) ($r3 | ConvertTo-Json -Compress)
     Note 'after the failed update every old file is back, the added file is gone, nothing temporary is left' ((Read-Text (Join-Path $inst 'MineHunter.exe')) -eq 'OLD-EXE' -and (Read-Text (Join-Path $inst 'components\core.dll')) -eq 'OLD-CORE' -and (Read-Text (Join-Path $inst 'rules\core.json')) -eq 'OLD-RULES' -and -not (Test-Path (Join-Path $inst 'components\extra.dll')) -and @(Get-ChildItem $inst -Recurse -Filter '*.mhnew' -ErrorAction SilentlyContinue).Count -eq 0) ''
+    Note 'the marker is gone after a failed update that was rolled back' (-not (Test-Path (Join-Path $d 'res\inprogress.json'))) ''
 
     # ---- 3b. a file that cannot even be read for the backup: the update stops before touching anything
     $d = Fresh 't3b'; $inst = Join-Path $d 'install'; $res = Join-Path $d 'res\result.json'
@@ -75,6 +77,50 @@ try {
     try { $code5 = Run-Helper ('apply --src "' + (Join-Path $d 'pkg') + '" --dst "' + $inst + '" --backup "' + (Join-Path $d 'bk') + '" --result "' + $res + '" --from 1.0.0 --to 1.1.0 --wait 3') } finally { try { $open.Kill() } catch { } }
     $r5 = Get-Content $res -Raw | ConvertFrom-Json
     Note 'while a MineHunter program is still open in the folder the helper changes nothing and says why' ($code5 -eq 1 -and $r5.ok -eq $false -and $r5.error -like '*still open*' -and (Read-Text (Join-Path $inst 'components\core.dll')) -eq 'OLD-CORE' -and -not (Test-Path (Join-Path $d 'bk'))) (($r5 | ConvertTo-Json -Compress) + "  [dst: $inst; running: $seen5]")
+
+    # ---- 6. an update cut short (power loss): the next start of a MineHunter program puts the saved files back by itself
+    $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+    $cliSrc = Join-Path $repo 'MineHunter-cli.exe'
+    if (Test-Path $cliSrc) {
+        function New-Install($d) {
+            $inst = Join-Path $d 'install'; New-Item -ItemType Directory -Force $inst | Out-Null
+            Copy-Item $cliSrc $inst; if (Test-Path "$cliSrc.config") { Copy-Item "$cliSrc.config" $inst }
+            Copy-Item (Join-Path $repo 'components') (Join-Path $inst 'components') -Recurse
+            Copy-Item (Join-Path $repo 'config.json') $inst -ErrorAction SilentlyContinue
+            return $inst
+        }
+        function Esc($s) { $s.Replace('\', '\\') }
+        $oldPD = $env:ProgramData
+        try {
+            $d = Join-Path $root 't6'; New-Item -ItemType Directory -Force $d | Out-Null
+            $inst = New-Install $d; $bk = Join-Path $d 'bk'
+            $pd = Join-Path $d 'pd'; $upd = Join-Path $pd 'MineHunter\updates'; New-Item -ItemType Directory -Force $upd | Out-Null
+            Write-Tree $bk @{ 'docs\RESTORED.txt' = 'RESTORED'; '_created.txt' = "components\extra.dll" }
+            [IO.File]::WriteAllText((Join-Path $inst 'components\extra.dll'), 'HALF-NEW')
+            $marker = Join-Path $upd 'inprogress.json'
+            [IO.File]::WriteAllText($marker, ('{"dst":"' + (Esc $inst) + '","backup":"' + (Esc $bk) + '","from":"1.1.0","to":"1.2.0","time":"2026-01-01T00:00:00"}'))
+            $env:ProgramData = $pd
+            $p = Start-Process -FilePath (Join-Path $inst 'MineHunter-cli.exe') -ArgumentList '--version' -PassThru -WindowStyle Hidden; $p.WaitForExit(60000) | Out-Null
+            $res6 = Join-Path $upd 'result.json'
+            for ($i = 0; $i -lt 40 -and -not (Test-Path $res6); $i++) { Start-Sleep -Milliseconds 500 }
+            Start-Sleep -Seconds 2
+            $r6 = if (Test-Path $res6) { Get-Content $res6 -Raw | ConvertFrom-Json } else { $null }
+            Note 'a program started after a cut-short update puts the saved files back, removes what the update had added and removes the marker' ((Read-Text (Join-Path $inst 'docs\RESTORED.txt')) -eq 'RESTORED' -and -not (Test-Path (Join-Path $inst 'components\extra.dll')) -and -not (Test-Path $marker)) ("exit $($p.ExitCode)")
+            Note 'the result says the update did not finish and the previous version was put back' ($r6 -ne $null -and $r6.ok -eq $false -and $r6.rolledBack -eq $true -and $r6.error -like '*interrupted*' -and $r6.to -eq '1.2.0') ($r6 | ConvertTo-Json -Compress)
+
+            # a marker that belongs to some other installation is left alone and the program starts normally
+            $d2 = Join-Path $root 't6b'; New-Item -ItemType Directory -Force $d2 | Out-Null
+            $inst2 = New-Install $d2; $bk2 = Join-Path $d2 'bk'; Write-Tree $bk2 @{ 'docs\RESTORED.txt' = 'RESTORED' }
+            $pd2 = Join-Path $d2 'pd'; $upd2 = Join-Path $pd2 'MineHunter\updates'; New-Item -ItemType Directory -Force $upd2 | Out-Null
+            $other = Join-Path $d2 'some-other-folder'
+            $marker2 = Join-Path $upd2 'inprogress.json'
+            [IO.File]::WriteAllText($marker2, ('{"dst":"' + (Esc $other) + '","backup":"' + (Esc $bk2) + '","from":"1.1.0","to":"1.2.0","time":"2026-01-01T00:00:00"}'))
+            $env:ProgramData = $pd2
+            $out = & (Join-Path $inst2 'MineHunter-cli.exe') --version 2>&1 | Out-String
+            Start-Sleep -Seconds 1
+            Note 'a marker of another installation does not stop the program, and nothing is restored' ($out -like '*MineHunter*' -and (Test-Path $marker2) -and -not (Test-Path (Join-Path $inst2 'docs\RESTORED.txt'))) ($out.Trim())
+        } finally { $env:ProgramData = $oldPD }
+    }
 }
 finally {
     Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root) } | ForEach-Object { try { $_.Kill() } catch { } }

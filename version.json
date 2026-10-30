@@ -3,10 +3,10 @@
     "releaseUrl":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
     "notes":  "MineHunter 1.1.0: three programs on one engine, new window, real-time guards, schedule, signed self-update, drivers and Windows health.",
     "rules":  {
-                  "version":  "2026.10.04.1",
+                  "version":  "2026.10.31.1",
                   "url":  "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",
-                  "sha256":  "e2197bc828be56341f94770917f9d00393a57ce00f28dfefef4ab166531fa8b1",
-                  "signature":  "wTzFYkHVBMFFkxcsU3MD692QYQ1UpHlbvYF4ghJfzrf/XMLs5ktMgYjzrF2ymdp8op9+aKqUyLM7EUYL1xmVN1nFO6NtkvCG6CzMnTUggSZWH4fAg9BB4AGP2SNR8dQRKcSQtsjUKR8y83mjwRQpAKOe08TmAk3xwFlC9cop6TV7aCfn0MlHlykuMa9mXSBvRxpwolI2s1oBsoqz8AGxdXTqRV0vkpmhXMSyolMvJSSzApulXd3ox8DIAQwAEgK99Kc9y9XWlizLsPYpexMIRKUjwZPwtDEnHz8KZHI9vg8F3W2IenhD8OnaKQpQb6NdvjJNFZWsT4QTGC2L1ZWrq5o3Q0xKUsZKHAVMnaLtdapzAYmJrq1PgtTyqOvxYmkK0ouZIixVpxUIc0A7tFLZ3BzRG856w0cAjRed2ONtKI9OvLUjE/k/OmYHDAXxONVGwRE0MjcTi823uHl8jppiVx9BcC9gPNloH8Pdod1p2EZL1KgZNynMDCKjO/FqHkUq"
+                  "sha256":  "4f57c6b0ab6041d40fcb99142f3e7895180aa41d211d5a32a543bd1befad47db",
+                  "signature":  "Nes6j4Znay8N2oFeFWbSJLukkeMKbgexR8m9uZfrpSdRW3ehgME/xQbtDyCVJWHdPEyP1YjyRdej9t6x7eRgxGlUAo+m6qw0qoXKFbUcuonB8Hejbe7irrgCAKIjFtFN1FXFenhZAdxF60ataApGRywhnSscz5liDfGdG/EiBaiY8HI1xvCm+UewQGjuELxecuK+ILdOq/YYmydL1MZawfo92/VOIAqeETvDp5l12wIr5a/UYyNFGtYsw+Js422QiaxK6vAegOKMoEV6vi8K0elOrBjxPnVVeNo/aqu2K3UtTSdOvTCAztTg2+jlF6YmGpPpNJN69SoqF5HB3WIvnByDX203hrvB8VvoPsyILbKjUz3oYEamKbC3Wvnp3KXsI1NKrl8KURlDSbQqqPuWUMxMWwCnU6kY0d+rmqYz1hD7C1BPmOAkkgXE5YBUf1HvwqjOMH0qZzQSvR+j/oGB8NfVlCMYMNj6tC0DYNAeO2XKpj1gGU9XwlGz10kbNwK3"
               },
     "app":  {
                 "version":  "1.1.0",
