@@ -1,7 +1,7 @@
 {
-    "latestVersion":  "1.1.0",
+    "latestVersion":  "1.2.0",
     "releaseUrl":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/latest",
-    "notes":  "MineHunter 1.1.0: three programs on one engine, new window, real-time guards, schedule, signed self-update, drivers and Windows health.",
+    "notes":  "Safer self-update (an update cut short rolls back by itself), new detections. Details in the changelog.",
     "rules":  {
                   "version":  "2026.10.31.1",
                   "url":  "https://raw.githubusercontent.com/ilyasaffonovv-commits/MineHunter/main/rules/core.json",
@@ -9,12 +9,12 @@
                   "signature":  "Nes6j4Znay8N2oFeFWbSJLukkeMKbgexR8m9uZfrpSdRW3ehgME/xQbtDyCVJWHdPEyP1YjyRdej9t6x7eRgxGlUAo+m6qw0qoXKFbUcuonB8Hejbe7irrgCAKIjFtFN1FXFenhZAdxF60ataApGRywhnSscz5liDfGdG/EiBaiY8HI1xvCm+UewQGjuELxecuK+ILdOq/YYmydL1MZawfo92/VOIAqeETvDp5l12wIr5a/UYyNFGtYsw+Js422QiaxK6vAegOKMoEV6vi8K0elOrBjxPnVVeNo/aqu2K3UtTSdOvTCAztTg2+jlF6YmGpPpNJN69SoqF5HB3WIvnByDX203hrvB8VvoPsyILbKjUz3oYEamKbC3Wvnp3KXsI1NKrl8KURlDSbQqqPuWUMxMWwCnU6kY0d+rmqYz1hD7C1BPmOAkkgXE5YBUf1HvwqjOMH0qZzQSvR+j/oGB8NfVlCMYMNj6tC0DYNAeO2XKpj1gGU9XwlGz10kbNwK3"
               },
     "app":  {
-                "version":  "1.1.0",
-                "url":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/download/v1.1.0/MineHunter-Portable-x64.zip",
-                "sha256":  "14e15409ae7e13ca5d9d2a1f2718e3b544113382cab8d97d6c7c7aef35066c30",
-                "size":  1771587,
+                "version":  "1.2.0",
+                "url":  "https://github.com/ilyasaffonovv-commits/MineHunter/releases/download/v1.2.0/MineHunter-Portable-x64.zip",
+                "sha256":  "dae1bd494ea91dcbec89c8424ac562a99a508ca9490144d18a25a933a2cd2f0f",
+                "size":  1791724,
                 "minVersion":  "1.0.0",
-                "notes":  "MineHunter 1.1.0: three programs on one engine, new window, real-time guards, schedule, signed self-update, drivers and Windows health.",
-                "signature":  "p2VKxyIrpcrjc50bSGBp9Kqsz8a5vGOitYC7UNl9F6ibeeqJPLXwc6eqeH0RSFFE9rCkF34KA/6ZY07+j0wBCSM4qbcZuzt+NZD/6MEY3n8syDfoMH4ovLImgeC037iD+9QizIywZ5sVQSoSRwGs81Y/cSM+RVvp9sIcR/im5lyqLTDNcfVSpznJ7T8IH8XNB079Ye7A5v87DONe4It0sqEvADr+vY102J/VWLbwiae2dkQSh5007+396BGG2L4hnjcz8ufKbK7JYwDL2FXKuG6cnlHa1LcZEAWaJlkB7WN3qpPrTqHX3sE/pb0Ss6FxffZ0Y3j6evpGF8KTlLkRbumqeTQZyNSuo72Og3zn+F5we7LGBdgsc6X5RIDB9GCEXZtMUtVFilLY6okTU3ulzs3c6wFhaw+TBEuk8fb757enLpBQcFzQQXFg0/MTRvwzgOHpvL9iYo3NN8FqgqbuqtbMImjOROerJ6elgHKMR0QEevF/R7PyQKz7rpUIcuao"
+                "notes":  "Safer self-update (an update cut short rolls back by itself), new detections. Details in the changelog.",
+                "signature":  "EiyoPn4ty5QZqNJ2beE4YyJp+hoavu8s6VzXxrrkfzl5IYv+rTReJAUsqxEd8SJB+03oKBu8c3FwIWW/4Sq5MrwqGuyHU6LOMddC/Q1Tr1SebUuiUkmFM4ma2BzGFrAlLdbgZ80AiGkxzEGAHUZaEiys/k2cCPI7nFd0KrlAG4K+jtUbd4fwDRNn7E4ANvsgdy0P9nJLvno4wsrLX1ZC8mfYh30yNuMgmc1NjSay2b7fm7Li2ixmHY6z6r0E4mTa/Q7Bt4capqJwAzq8TpIfcbg/OB8iVsrWFX+sQMBQKq+qdnD1YMSDkr+vkX7zP+CaWDGhbGGP90Id3ec3ITHrAJH1odbbYQdQFASvRu2dandogPyW5ZWnWPhC68wPeUotMZpUCkERFn/ANtP32gS504hzAnN1aVX5CpS4VbihCAu/cKpfBjn1U+bhCstu1+wmkQk/FXDnRkw/JcytAOmYuhvBsNJ4xFsiUk56mMPAoWHw5qX+fAWDV6AEg+bUU5gR"
             }
 }
